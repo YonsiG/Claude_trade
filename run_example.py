@@ -20,7 +20,7 @@ def _build_registry(df, capital):
     return {
         "single_signal": SingleSignalStrategy(
             df,
-            signal_fn=engulfing,
+            signal_fn=umbrella,
             trail_pct=0.30,
             sl_pct=0.10,
             initial_capital=capital,
