@@ -30,15 +30,20 @@ def buy(state: dict, price: float, futures: bool = False, multiplier: float = 1.
         state["cash"] = 0.0
 
 
-def sell(state: dict, price: float, futures: bool = False, multiplier: float = 1.0) -> None:
-    """Liquidate all long shares/lots to cash. No-op if flat or short."""
+def sell(state: dict, price: float, futures: bool = False, multiplier: float = 1.0,
+         ratio: float = 1.0) -> None:
+    """Liquidate `ratio` of long shares/lots to cash. No-op if flat or short."""
     if state["shares"] <= 0:
         return
+    factor = price * multiplier if futures else price
     if futures:
-        state["cash"] += state["shares"] * price * multiplier
+        qty = math.floor(state["shares"] * ratio)
+        if qty <= 0:
+            return
     else:
-        state["cash"] += state["shares"] * price
-    state["shares"] = 0.0
+        qty = state["shares"] * ratio
+    state["cash"] += qty * factor
+    state["shares"] -= qty
 
 
 def short(state: dict, price: float, futures: bool = False, multiplier: float = 1.0) -> None:
@@ -65,16 +70,20 @@ def short(state: dict, price: float, futures: bool = False, multiplier: float = 
         state["cash"] += abs(state["shares"]) * price
 
 
-def cover(state: dict, price: float, futures: bool = False, multiplier: float = 1.0) -> None:
-    """Buy back all short shares/lots to close position. No-op if flat or long."""
+def cover(state: dict, price: float, futures: bool = False, multiplier: float = 1.0,
+          ratio: float = 1.0) -> None:
+    """Buy back `ratio` of short shares/lots to close position. No-op if flat or long."""
     if state["shares"] >= 0:
         return
-    lots = abs(state["shares"])
+    factor = price * multiplier if futures else price
     if futures:
-        state["cash"] -= lots * price * multiplier
+        qty = math.floor(abs(state["shares"]) * ratio)
+        if qty <= 0:
+            return
     else:
-        state["cash"] -= lots * price
-    state["shares"] = 0.0
+        qty = abs(state["shares"]) * ratio
+    state["cash"] -= qty * factor
+    state["shares"] += qty
 
 
 def take_profit(state: dict, current_price: float, tp_price: float,
@@ -83,40 +92,18 @@ def take_profit(state: dict, current_price: float, tp_price: float,
     Close `ratio` of position when profit target is hit.
     Long : triggers when current_price >= tp_price.
     Short: triggers when current_price <= tp_price.
-    futures=True: lots after floor must be >= 1.
     Returns True if triggered.
     """
     if state["shares"] == 0:
         return False
-
     if state["shares"] > 0:
         if current_price < tp_price:
             return False
-        if futures:
-            lots = math.floor(state["shares"] * ratio)
-            if lots <= 0:
-                return False
-            state["cash"] += lots * current_price * multiplier
-            state["shares"] -= lots
-        else:
-            qty = state["shares"] * ratio
-            state["cash"] += qty * current_price
-            state["shares"] -= qty
-
-    else:  # short
+        sell(state, current_price, futures, multiplier, ratio)
+    else:
         if current_price > tp_price:
             return False
-        if futures:
-            lots = math.floor(abs(state["shares"]) * ratio)
-            if lots <= 0:
-                return False
-            state["cash"] -= lots * current_price * multiplier
-            state["shares"] += lots
-        else:
-            qty = abs(state["shares"]) * ratio
-            state["cash"] -= qty * current_price
-            state["shares"] += qty
-
+        cover(state, current_price, futures, multiplier, ratio)
     return True
 
 
@@ -126,41 +113,59 @@ def stop_loss(state: dict, current_price: float, sl_price: float,
     Close `ratio` of position when stop is hit.
     Long : triggers when current_price <= sl_price.
     Short: triggers when current_price >= sl_price.
-    futures=True: lots after floor must be >= 1.
     Returns True if triggered.
     """
     if state["shares"] == 0:
         return False
-
     if state["shares"] > 0:
         if current_price > sl_price:
             return False
-        if futures:
-            lots = math.floor(state["shares"] * ratio)
-            if lots <= 0:
-                return False
-            state["cash"] += lots * current_price * multiplier
-            state["shares"] -= lots
-        else:
-            qty = state["shares"] * ratio
-            state["cash"] += qty * current_price
-            state["shares"] -= qty
-
-    else:  # short
+        sell(state, current_price, futures, multiplier, ratio)
+    else:
         if current_price < sl_price:
             return False
-        if futures:
-            lots = math.floor(abs(state["shares"]) * ratio)
-            if lots <= 0:
-                return False
-            state["cash"] -= lots * current_price * multiplier
-            state["shares"] += lots
-        else:
-            qty = abs(state["shares"]) * ratio
-            state["cash"] -= qty * current_price
-            state["shares"] += qty
-
+        cover(state, current_price, futures, multiplier, ratio)
     return True
+
+
+def trailing_take_profit(state: dict, current_price: float, bars_held: int,
+                         window: int, x: float,
+                         futures: bool = False, multiplier: float = 1.0) -> bool:
+    """
+    Trailing take-profit, active for `window` bars after entry signal.
+
+    Tracks the peak favorable price in state['_trail_peak']. Closes the
+    full position when price retraces more than `x` (fraction, e.g. 0.05
+    for 5%) from that peak.
+
+    Long : peak = highest price seen; triggers when current_price <= peak * (1 - x)
+    Short: peak = lowest  price seen; triggers when current_price >= peak * (1 + x)
+
+    Clears state['_trail_peak'] on trigger or when window expires.
+    Returns True if triggered.
+    """
+    if state["shares"] == 0:
+        state.pop("_trail_peak", None)
+        return False
+
+    if bars_held > window:
+        state.pop("_trail_peak", None)
+        return False
+
+    if state["shares"] > 0:
+        state["_trail_peak"] = max(state.get("_trail_peak", current_price), current_price)
+        if current_price <= state["_trail_peak"] * (1 - x):
+            state.pop("_trail_peak", None)
+            sell(state, current_price, futures, multiplier)
+            return True
+    else:
+        state["_trail_peak"] = min(state.get("_trail_peak", current_price), current_price)
+        if current_price >= state["_trail_peak"] * (1 + x):
+            state.pop("_trail_peak", None)
+            cover(state, current_price, futures, multiplier)
+            return True
+
+    return False
 
 
 def force_close(state: dict, current_price: float, dt,
@@ -186,7 +191,6 @@ def force_close(state: dict, current_price: float, dt,
     if equity > 0:
         return None
 
-    # Liquidate
     if state["shares"] > 0:
         sell(state, current_price, futures, multiplier)
     elif state["shares"] < 0:

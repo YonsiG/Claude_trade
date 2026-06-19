@@ -86,6 +86,24 @@ stop_loss(state, current_price=88, sl_price=90)
 stop_loss(state, current_price=112, sl_price=110, ratio=0.33)
 ```
 
+### `trailing_take_profit(state, current_price, bars_held, window, x, futures=False, multiplier=1.0) -> bool`
+
+浮动止盈。从信号触发的那根 bar 算起，在 `window` 根 bar 内追踪价格峰值，一旦从峰值回撤超过 `x`（比例），立即全仓平仓。
+
+| 方向 | 峰值定义 | 触发条件 |
+|------|----------|----------|
+| 多头 | 持仓期间最高价 | `current_price <= peak × (1 − x)` |
+| 空头 | 持仓期间最低价 | `current_price >= peak × (1 + x)` |
+
+峰值存储在 `state['_trail_peak']`，触发或超出窗口时自动清除。
+
+```python
+# 多头：10根bar内，从峰值回撤5%则止盈
+for i, price in enumerate(price_series):
+    if trailing_take_profit(state, price, bars_held=i, window=10, x=0.05):
+        break
+```
+
 ### `force_close(state, current_price, dt, futures=False, multiplier=1.0) -> dict | None`
 
 强制平仓检查。每根 bar 调用一次。若总资产归零（≤ 0）则立即平掉所有仓位，返回 bust 记录；否则返回 `None`。
