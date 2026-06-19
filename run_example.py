@@ -4,44 +4,43 @@
 用法示例：
   python run_example.py
   python run_example.py --ticker TSLA --start 2021-01-01 --end 2023-12-31
-  python run_example.py --strategy multi_signal --capital 50000
+  python run_example.py --strategy single_signal --capital 50000
 """
 import argparse
 
 from data.loader import load
-from signals.price_signals import is_increase, is_decrease
-from strategies.multi_signal import MultiSignalStrategy
+from signals.pattern import umbrella
+from strategies.single_signal import SingleSignalStrategy
 from backtest import engine
 
 
 # ── 策略注册表 ──────────────────────────────────────────────────────────────
 def _build_registry(df, capital):
     return {
-        "multi_signal": MultiSignalStrategy(
+        "single_signal": SingleSignalStrategy(
             df,
-            buy_signals=[is_increase],
-            sell_signals=[is_decrease],
-            buy_threshold=1,
-            sell_threshold=1,
+            signal_fn=umbrella,
+            trail_pct=0.30,
+            sl_pct=0.10,
             initial_capital=capital,
         ),
-        # "breakout":    BreakoutStrategy(df, capital=capital, ...),
-        # "mean_revert": MeanRevertStrategy(df, capital=capital, ...),
+        # "breakout":    BreakoutStrategy(df, initial_capital=capital, ...),
+        # "mean_revert": MeanRevertStrategy(df, initial_capital=capital, ...),
     }
 # ────────────────────────────────────────────────────────────────────────────
 
 
 def parse_args():
     p = argparse.ArgumentParser(description="回测主入口")
-    p.add_argument("--ticker",   default="AAPL",       help="标的代码 (默认: AAPL)")
-    p.add_argument("--start",    default="2020-01-01", help="起始日期 YYYY-MM-DD")
-    p.add_argument("--end",      default="2024-12-31", help="结束日期 YYYY-MM-DD")
-    p.add_argument("--interval", default="1d",         help="K线周期 (默认: 1d)")
-    p.add_argument("--source",   default="yf",         choices=["yf", "ak"],
+    p.add_argument("--ticker",   default="AAPL",          help="标的代码 (默认: AAPL)")
+    p.add_argument("--start",    default="2020-01-01",    help="起始日期 YYYY-MM-DD")
+    p.add_argument("--end",      default="2024-12-31",    help="结束日期 YYYY-MM-DD")
+    p.add_argument("--interval", default="1d",            help="K线周期 (默认: 1d)")
+    p.add_argument("--source",   default="yf",            choices=["yf", "ak"],
                    help="数据源 (默认: yf)")
-    p.add_argument("--strategy", default="multi_signal",
-                   help="策略名称，需在注册表中 (默认: multi_signal)")
-    p.add_argument("--capital",  default=100_000, type=float,
+    p.add_argument("--strategy", default="single_signal",
+                   help="策略名称，需在注册表中 (默认: single_signal)")
+    p.add_argument("--capital",  default=100_000,         type=float,
                    help="初始资金 (默认: 100000)")
     return p.parse_args()
 
