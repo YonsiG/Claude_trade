@@ -1,86 +1,56 @@
 # tools/
 
-仓位管理原语。所有函数共享一个 `state` 字典，结构如下：
-
-```python
-state = {"cash": float, "shares": float}
-```
+交易执行原语，供策略层调用。
 
 ---
 
-## 函数一览
+## trade.py
 
-### `buy(state, price)`
-
-全仓买入。将所有现金按 `price` 换成份额。已持仓时无操作。
+所有函数共享同一个 `state` 字典：
 
 ```python
-buy(state, price=100.0)
+state = {"cash": 100_000.0, "shares": 0.0}
+# shares > 0 : 多头持仓
+# shares < 0 : 空头持仓
+# shares == 0: 空仓
 ```
 
-### `sell(state, price)`
+### 开平仓
 
-全仓卖出。将所有份额按 `price` 换回现金。空仓时无操作。
+| 函数 | 说明 |
+|------|------|
+| `buy(state, price, futures, multiplier)` | 全仓做多；若当前空头则先平空再做多 |
+| `sell(state, price, futures, multiplier)` | 平多；空仓或空头时无效 |
+| `short(state, price, futures, multiplier)` | 全仓做空；若当前多头则先平多再做空 |
+| `cover(state, price, futures, multiplier)` | 平空；空仓或多头时无效 |
+
+### 止盈止损
+
+| 函数 | 说明 |
+|------|------|
+| `take_profit(state, current_price, tp_price, ratio, futures, multiplier)` | 多头：价格 >= tp_price 时平 ratio 比例；空头：价格 <= tp_price 时平 ratio 比例 |
+| `stop_loss(state, current_price, sl_price, ratio, futures, multiplier)` | 多头：价格 <= sl_price 时平 ratio 比例；空头：价格 >= sl_price 时平 ratio 比例 |
+
+### 参数说明
+
+- `futures` (bool, 默认 False)：期货模式，持仓取整手，价值乘以 `multiplier`
+- `multiplier` (float, 默认 1.0)：合约乘数（股票忽略此参数）
+- `ratio` (float, 默认 1.0)：平仓比例，范围 (0, 1]
+
+### 示例
 
 ```python
-sell(state, price=105.0)
+from tools.trade import buy, sell, short, cover, take_profit, stop_loss
+
+state = {"cash": 100_000.0, "shares": 0.0}
+
+# 股票做多
+buy(state, price=150.0)
+take_profit(state, current_price=180.0, tp_price=175.0, ratio=0.5)
+sell(state, price=180.0)
+
+# 期货做空（ES=F，乘数50）
+short(state, price=5000.0, futures=True, multiplier=50)
+stop_loss(state, current_price=5100.0, sl_price=5080.0, futures=True, multiplier=50)
+cover(state, price=4900.0, futures=True, multiplier=50)
 ```
-
-### `take_profit(state, current_price, tp_price, ratio=1.0) -> bool`
-
-止盈。当 `current_price >= tp_price` 时，卖出 `ratio` 比例的持仓。返回 `True` 表示本次触发。
-
-```python
-# 价格涨到 110 时全部卖出
-take_profit(state, current_price=112, tp_price=110)
-
-# 价格涨到 110 时只卖一半
-take_profit(state, current_price=112, tp_price=110, ratio=0.5)
-```
-
-### `stop_loss(state, current_price, sl_price, ratio=1.0) -> bool`
-
-止损。当 `current_price <= sl_price` 时，卖出 `ratio` 比例的持仓。返回 `True` 表示本次触发。
-
-```python
-# 价格跌到 90 时全部止损
-stop_loss(state, current_price=88, sl_price=90)
-
-# 价格跌到 90 时只止损三分之一
-stop_loss(state, current_price=88, sl_price=90, ratio=0.33)
-```
-
----
-
-## 参数说明
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `state` | `dict` | 含 `cash`（现金）和 `shares`（份额）的状态字典，原地修改 |
-| `price` / `current_price` | `float` | 当前成交价格 |
-| `tp_price` | `float` | 止盈触发价，`current_price >= tp_price` 时卖出 |
-| `sl_price` | `float` | 止损触发价，`current_price <= sl_price` 时卖出 |
-| `ratio` | `float` | 卖出比例，取值 `(0, 1]`，默认 `1.0`（全仓） |
-
----
-
-## 在策略中使用
-
-```python
-from tools import buy, sell, take_profit, stop_loss
-
-state = {"cash": 100_000, "shares": 0.0}
-entry_price = 100.0
-
-# 建仓
-buy(state, entry_price)
-
-# 每根 bar 检查止盈止损
-for price in price_series:
-    if take_profit(state, price, tp_price=entry_price * 1.10):
-        break  # 止盈离场
-    if stop_loss(state, price, sl_price=entry_price * 0.95):
-        break  # 止损离场
-```
-
-`take_profit` 和 `stop_loss` 均返回 `bool`，可用于记录触发日志或切换策略状态。
