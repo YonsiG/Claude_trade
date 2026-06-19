@@ -11,7 +11,7 @@ claude_trade_expert/
 ├── data/           # 数据下载与缓存（yfinance + akshare）
 ├── signals/        # 原子信号函数（买卖指标）
 ├── trend/          # 市场状态识别（趋势检测）
-├── tools/          # 仓位管理原语（买入、卖出）
+├── tools/          # 仓位管理原语（买入、卖出、止盈、止损）
 ├── strategies/     # 策略逻辑（组合信号）
 ├── backtest/       # 回测引擎、绩效指标、图表
 └── run_example.py  # 端到端示例
@@ -63,16 +63,18 @@ python data/fetch.py --day     # 分钟线，近 5 天
 
 ## 仓位工具（`tools/`）
 
-`trade.py` 提供两个有状态的仓位管理函数，共享 `state` 字典（含 `cash` 和 `shares`）：
+详见 [tools/README.md](tools/README.md)。
 
-```python
-state = {"cash": 100_000, "shares": 0.0}
+`trade.py` 提供四个有状态的仓位管理函数，共享 `state` 字典（含 `cash` 和 `shares`）：
 
-buy(state, price)   # 全仓买入；已持仓时不操作
-sell(state, price)  # 全仓卖出；空仓时不操作
-```
+| 函数 | 触发条件 |
+|------|----------|
+| `buy(state, price)` | 全仓买入 |
+| `sell(state, price)` | 全仓卖出 |
+| `take_profit(state, current_price, tp_price, ratio=1.0)` | `current_price >= tp_price` 时卖出 `ratio` 比例 |
+| `stop_loss(state, current_price, sl_price, ratio=1.0)` | `current_price <= sl_price` 时卖出 `ratio` 比例 |
 
-所有策略必须通过这两个函数修改仓位。
+止盈/止损函数返回 `bool`，`True` 表示本次触发。
 
 ---
 
@@ -184,6 +186,6 @@ python run_example.py
 ## 扩展指南
 
 - **新增信号**：在 `signals/` 下添加 `fn(close: pd.Series) -> pd.Series`（返回 0/1）
-- **新增策略**：继承 `BaseStrategy`，实现 `run()`，仓位操作通过 `buy()`/`sell()`
+- **新增策略**：继承 `BaseStrategy`，实现 `run()`，仓位操作通过 `buy()`/`sell()`/`take_profit()`/`stop_loss()`
 - **新增数据源**：在 `data/` 下添加返回小写 OHLCV 列的 DataFrame 的 loader
 - **新增趋势类型**：在 `trend/base.py` 的 `TrendType` 中添加枚举值，新建检测文件，注册到 `_DEFAULT_PIPELINE`
