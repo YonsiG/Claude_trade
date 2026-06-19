@@ -78,12 +78,7 @@ def short(state: dict, price: float, futures: bool = False, multiplier: float = 
     if state["cash"] <= 0 or state["shares"] < 0:
         return
     if futures:
-        denom = price * multiplier * (1 - fee_rate) - fee_per_lot
-        if denom <= 0:
-            return
-        lots = math.floor(state["cash"] / denom) if False else math.floor(
-            state["cash"] / (price * multiplier * (1 + fee_rate) + fee_per_lot)
-        )
+        lots = math.floor(state["cash"] / (price * multiplier * (1 + fee_rate) + fee_per_lot))
         if lots <= 0:
             return
         fee = _fee(lots, price, fee_rate, fee_per_lot, futures, multiplier)
