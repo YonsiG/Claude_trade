@@ -175,7 +175,7 @@ def main() -> None:
 
     print()
     print("=" * 65)
-    print("Done. Data cached in data/raw/ak/ and data/raw/yf/")
+    print("Done. Data cached in data/raw/futures/ and data/raw/stock/")
     print("=" * 65)
 
 

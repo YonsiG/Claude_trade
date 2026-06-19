@@ -12,8 +12,9 @@
 | `fetch.py` | 批量下载脚本，命令行入口 |
 | `tickers.txt` | 品种列表，三列格式：ticker、source、名称 |
 | `tickerref.txt` | 期货品种参考表，用于校验 tickers.txt 中的期货合法性 |
-| `raw/yf/` | yfinance 数据缓存目录 |
-| `raw/ak/` | akshare 数据缓存目录 |
+| `raw/futures/yf/` | 美盘期货缓存（ticker 以 `=F` 结尾） |
+| `raw/futures/ak/` | 国内期货缓存（akshare） |
+| `raw/stock/yf/` | 美股 / ETF 缓存 |
 
 ---
 
@@ -36,10 +37,10 @@ NQ=F       yf       纳指100
 ## 缓存命名规则
 
 ```
-raw/{source}/{ticker}_{start}_{end}_{interval}.csv
+raw/{futures|stock}/{source}/{ticker}_{start}_{end}_{interval}.csv
 ```
 
-例如：`raw/yf/GC=F_2021-06-20_2026-06-19_1d.csv`
+例如：`raw/futures/yf/GC=F_2021-06-20_2026-06-19_1d.csv`、`raw/stock/yf/AAPL_2021-06-20_2026-06-19_1d.csv`
 
 缓存逻辑（`loader.py`）：
 - 若已有文件完整覆盖请求区间 → 直接切片返回
@@ -110,5 +111,6 @@ df = download("AU0", "2021-01-01", "2024-12-31", interval="1h", source="ak")
 ## 注意事项
 
 - `raw/` 目录下的 CSV 文件已加入 `.gitignore`，不会被提交
+- 路由规则：`source=ak` 或 ticker 以 `=F` 结尾 → `futures/`；其余 `yf` ticker → `stock/`
 - akshare 分钟/小时线仅返回最近约 1000 根 K 线，历史数据有限
 - yfinance 在网络受限环境下可在 `loader.py` 中设置 `YF_PROXY`

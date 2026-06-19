@@ -21,12 +21,17 @@ YF_PROXY: str | None = None
 
 RAW_DIR = Path(__file__).parent / "raw"
 
-_SOURCE_DIRS = {
-    "yf": RAW_DIR / "yf",
-    "ak": RAW_DIR / "ak",
-}
-for _d in _SOURCE_DIRS.values():
-    _d.mkdir(parents=True, exist_ok=True)
+_VALID_SOURCES = {"yf", "ak"}
+
+
+def _resolve_dir(ticker: str, source: str) -> Path:
+    """Route to raw/futures/{source}/ or raw/stock/yf/ based on ticker and source."""
+    if source == "ak" or ticker.endswith("=F"):
+        d = RAW_DIR / "futures" / source
+    else:
+        d = RAW_DIR / "stock" / source
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 # Matches: AAPL_2020-01-01_2024-12-31_1d  or  RB0_2020-01-01_2024-12-31_1d
 # Greedy first group handles tickers with underscores (e.g. BRK_B)
@@ -159,8 +164,8 @@ def download(ticker: str, start: str, end: str,
         source:   "yf" (yfinance, US stocks/futures) | "ak" (akshare, Chinese futures)
         save:     Persist to raw/{source}/{ticker}_{start}_{end}_{interval}.csv
     """
-    if source not in _SOURCE_DIRS:
-        raise ValueError(f"Unknown source '{source}'. Choose: {list(_SOURCE_DIRS)}")
+    if source not in _VALID_SOURCES:
+        raise ValueError(f"Unknown source '{source}'. Choose: {list(_VALID_SOURCES)}")
 
     with tqdm(total=1, desc=f"[{source}] {ticker} {start}→{end} [{interval}]",
               unit="req", bar_format="{l_bar}{bar}| {elapsed}") as bar:
@@ -177,7 +182,7 @@ def download(ticker: str, start: str, end: str,
         )
 
     if save:
-        path = _SOURCE_DIRS[source] / f"{ticker}_{start}_{end}_{interval}.csv"
+        path = _resolve_dir(ticker, source) / f"{ticker}_{start}_{end}_{interval}.csv"
         df.to_csv(path)
 
     return df
@@ -201,10 +206,10 @@ def load(ticker: str, start: str, end: str,
         interval: "1d" (default) | "1h" | "30m" | "15m" | "5m" | "1m"
         source:   "yf" | "ak"
     """
-    if source not in _SOURCE_DIRS:
-        raise ValueError(f"Unknown source '{source}'. Choose: {list(_SOURCE_DIRS)}")
+    if source not in _VALID_SOURCES:
+        raise ValueError(f"Unknown source '{source}'. Choose: {list(_VALID_SOURCES)}")
 
-    raw_dir = _SOURCE_DIRS[source]
+    raw_dir = _resolve_dir(ticker, source)
     existing: list[tuple[Path, str, str]] = []
 
     for path in sorted(raw_dir.glob("*.csv")):
