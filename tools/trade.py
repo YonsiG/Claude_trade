@@ -13,3 +13,33 @@ def sell(state: dict, price: float) -> None:
     if state["shares"] > 0:
         state["cash"] = state["shares"] * price
         state["shares"] = 0.0
+
+
+def take_profit(state: dict, current_price: float, tp_price: float, ratio: float = 1.0) -> bool:
+    """
+    Sell `ratio` of current shares if current_price >= tp_price.
+
+    Returns True if the order was triggered.
+    ratio: fraction of shares to sell, 0 < ratio <= 1.
+    """
+    if state["shares"] <= 0 or current_price < tp_price:
+        return False
+    shares_to_sell = state["shares"] * ratio
+    state["cash"] += shares_to_sell * current_price
+    state["shares"] -= shares_to_sell
+    return True
+
+
+def stop_loss(state: dict, current_price: float, sl_price: float, ratio: float = 1.0) -> bool:
+    """
+    Sell `ratio` of current shares if current_price <= sl_price.
+
+    Returns True if the order was triggered.
+    ratio: fraction of shares to sell, 0 < ratio <= 1.
+    """
+    if state["shares"] <= 0 or current_price > sl_price:
+        return False
+    shares_to_sell = state["shares"] * ratio
+    state["cash"] += shares_to_sell * current_price
+    state["shares"] -= shares_to_sell
+    return True
