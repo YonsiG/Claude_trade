@@ -13,6 +13,7 @@ class SingleSignalStrategy(BaseStrategy):
 
     Exit conditions (checked every bar while in position):
       - Trailing take-profit: close when price retraces trail_pct from peak
+        within trail_window bars (default: unlimited)
       - Capital stop-loss   : close when price moves sl_pct against entry
     """
 
@@ -20,6 +21,7 @@ class SingleSignalStrategy(BaseStrategy):
                  signal_fn,
                  trail_pct: float = 0.30,
                  sl_pct: float = 0.10,
+                 trail_window: int = 10_000,
                  futures: bool = False,
                  multiplier: float = 1.0,
                  initial_capital: float = 100_000):
@@ -27,6 +29,7 @@ class SingleSignalStrategy(BaseStrategy):
         self.signal_fn = signal_fn
         self.trail_pct = trail_pct
         self.sl_pct = sl_pct
+        self.trail_window = trail_window
         self.futures = futures
         self.multiplier = multiplier
 
@@ -36,6 +39,7 @@ class SingleSignalStrategy(BaseStrategy):
 
         state = {"cash": self.initial_capital, "shares": 0.0}
         entry_price = None
+        bars_held = 0
         equity = []
         kwargs = {"futures": self.futures, "multiplier": self.multiplier}
 
@@ -44,25 +48,32 @@ class SingleSignalStrategy(BaseStrategy):
 
             # 1. 检查止盈止损（持仓中才触发）
             if state["shares"] != 0:
-                if trailing_take_profit(state, price, self.trail_pct, **kwargs):
+                if trailing_take_profit(state, price, bars_held, self.trail_window, self.trail_pct, **kwargs):
                     entry_price = None
+                    bars_held = 0
                 elif capital_stop_loss(state, price, entry_price, self.sl_pct, **kwargs):
                     entry_price = None
+                    bars_held = 0
+                else:
+                    bars_held += 1
 
             # 2. 信号触发开仓或平仓
             if state["shares"] == 0:
                 if sig > 0:
                     buy(state, price, **kwargs)
                     entry_price = price
+                    bars_held = 0
                 elif sig < 0:
                     short(state, price, **kwargs)
                     entry_price = price
+                    bars_held = 0
             elif sig == 0:
                 if state["shares"] > 0:
                     sell(state, price, **kwargs)
                 elif state["shares"] < 0:
                     cover(state, price, **kwargs)
                 entry_price = None
+                bars_held = 0
 
             # 3. 计算当日权益
             if self.futures:
