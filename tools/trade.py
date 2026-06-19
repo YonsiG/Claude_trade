@@ -161,3 +161,38 @@ def stop_loss(state: dict, current_price: float, sl_price: float,
             state["shares"] += qty
 
     return True
+
+
+def force_close(state: dict, current_price: float, dt,
+                futures: bool = False, multiplier: float = 1.0) -> dict | None:
+    """
+    Check if total equity has reached zero (or gone negative).
+    If so, liquidate all positions and return a bust record.
+    Otherwise return None.
+
+    Total equity:
+        long  shares: cash + shares * price [* multiplier]
+        short shares: cash - abs(shares) * price [* multiplier] (margin model)
+
+    The returned dict can be stored by the strategy and passed into the
+    backtest summary without affecting the equity curve or plot logic.
+    """
+    factor = current_price * multiplier if futures else current_price
+    if state["shares"] >= 0:
+        equity = state["cash"] + state["shares"] * factor
+    else:
+        equity = state["cash"] - abs(state["shares"]) * factor
+
+    if equity > 0:
+        return None
+
+    # Liquidate
+    if state["shares"] > 0:
+        sell(state, current_price, futures, multiplier)
+    elif state["shares"] < 0:
+        cover(state, current_price, futures, multiplier)
+
+    return {
+        "status": "Completely lost all money",
+        "datetime": str(dt),
+    }

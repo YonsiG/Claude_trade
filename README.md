@@ -65,16 +65,17 @@ python data/fetch.py --day     # 分钟线，近 5 天
 
 详见 [tools/README.md](tools/README.md)。
 
-`trade.py` 提供四个有状态的仓位管理函数，共享 `state` 字典（含 `cash` 和 `shares`）：
+`trade.py` 提供七个有状态的仓位管理函数，共享 `state` 字典（`cash` + `shares`，`shares < 0` 为空头）。支持股票（小数份额）和期货（整数手数 × 合约乘数）两种模式。
 
-| 函数 | 触发条件 |
-|------|----------|
-| `buy(state, price)` | 全仓买入 |
-| `sell(state, price)` | 全仓卖出 |
-| `take_profit(state, current_price, tp_price, ratio=1.0)` | `current_price >= tp_price` 时卖出 `ratio` 比例 |
-| `stop_loss(state, current_price, sl_price, ratio=1.0)` | `current_price <= sl_price` 时卖出 `ratio` 比例 |
-
-止盈/止损函数返回 `bool`，`True` 表示本次触发。
+| 函数 | 说明 |
+|------|------|
+| `buy(state, price, ...)` | 全仓做多；持空时先平空 |
+| `sell(state, price, ...)` | 全仓平多 |
+| `short(state, price, ...)` | 全仓做空；持多时先平多 |
+| `cover(state, price, ...)` | 全仓平空 |
+| `take_profit(..., ratio=1.0)` | 多空双向止盈，返回 `bool` |
+| `stop_loss(..., ratio=1.0)` | 多空双向止损，返回 `bool` |
+| `force_close(state, price, dt, ...)` | 总资产归零时强制平仓，返回 bust dict 或 `None` |
 
 ---
 
