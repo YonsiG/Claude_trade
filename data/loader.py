@@ -15,7 +15,8 @@ from tqdm import tqdm
 # akshare (Sina) routes through domestic servers and does NOT use this proxy.
 # Common ports: Clash=7890, V2RayN=10809, SSR=1080
 # Set to None to disable.
-YF_PROXY: str | None = "http://127.0.0.1:7890"
+#YF_PROXY: str | None = "http://127.0.0.1:7890"
+YF_PROXY: str | None = None
 # ─────────────────────────────────────────────────────────────────────────────
 
 RAW_DIR = Path(__file__).parent / "raw"
