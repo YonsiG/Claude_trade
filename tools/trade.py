@@ -128,27 +128,21 @@ def stop_loss(state: dict, current_price: float, sl_price: float,
     return True
 
 
-def trailing_take_profit(state: dict, current_price: float, bars_held: int,
-                         window: int, x: float,
+def trailing_take_profit(state: dict, current_price: float, x: float,
                          futures: bool = False, multiplier: float = 1.0) -> bool:
     """
-    Trailing take-profit, active for `window` bars after entry signal.
+    Trailing take-profit, active for the full duration of the position.
 
     Tracks the peak favorable price in state['_trail_peak']. Closes the
-    full position when price retraces more than `x` (fraction, e.g. 0.05
-    for 5%) from that peak.
+    full position when price retraces more than x (fraction, e.g. 0.30
+    for 30%) from that peak.
 
     Long : peak = highest price seen; triggers when current_price <= peak * (1 - x)
     Short: peak = lowest  price seen; triggers when current_price >= peak * (1 + x)
 
-    Clears state['_trail_peak'] on trigger or when window expires.
     Returns True if triggered.
     """
     if state["shares"] == 0:
-        state.pop("_trail_peak", None)
-        return False
-
-    if bars_held > window:
         state.pop("_trail_peak", None)
         return False
 
