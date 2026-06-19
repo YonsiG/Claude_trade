@@ -200,3 +200,22 @@ def force_close(state: dict, current_price: float, dt,
         "status": "Completely lost all money",
         "datetime": str(dt),
     }
+
+
+def capital_stop_loss(state: dict, current_price: float, entry_price: float, y: float,
+                      ratio: float = 1.0, futures: bool = False, multiplier: float = 1.0) -> bool:
+    """
+    Stop-loss based on capital loss ratio since entry signal.
+
+    Triggers when the unrealized loss exceeds y * entry position value:
+        Long : triggers when current_price <= entry_price * (1 - y)
+        Short: triggers when current_price >= entry_price * (1 + y)
+
+    y=0.05 means stop out when this trade has lost more than 5% of entry capital.
+    Delegates to stop_loss once the threshold price is computed.
+    """
+    if state["shares"] > 0:
+        sl_price = entry_price * (1 - y)
+    else:
+        sl_price = entry_price * (1 + y)
+    return stop_loss(state, current_price, sl_price, ratio, futures, multiplier)
