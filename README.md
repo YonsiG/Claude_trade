@@ -193,7 +193,7 @@ Each trend (except FLAT and OTHER) carries an intensity level:
 
 When intensity reaches **EXTREME**, the trend is automatically promoted to `ABNORMAL` (type 6).
 `result.base_trend` preserves the original trend type (e.g. `UPTREND`) for downstream use.
-result.duration            # bars going backwards this trend holds; 0 = not computed
+result.duration            # consecutive bars this trend holds going back; 0 = not computed
 
 ### Usage
 
