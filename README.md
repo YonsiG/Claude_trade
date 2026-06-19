@@ -10,6 +10,7 @@ A modular quantitative trading framework for signal-based strategy research and 
 claude_trade_expert/
 ├── data/           # Data downloading and caching
 ├── signals/        # Atomic signal functions (buy/sell indicators)
+├── trend/          # Market regime / trend detection
 ├── tools/          # Position management primitives (buy, sell)
 ├── strategies/     # Strategy logic combining signals
 ├── backtest/       # Backtesting engine, metrics, plots
@@ -162,8 +163,83 @@ python run_example.py
 
 ---
 
+
+## Trend Detection (`trend/`)
+
+Identifies the **market regime** of a given price series, independent of any buy/sell signal.
+Unlike signals, trend functions do not output 0/1 per bar — they classify the overall character
+of the last N bars as a single trend type.
+
+### Trend Types
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 1 | `UPTREND` | Price rising (linear regression slope > 0) |
+| 2 | `DOWNTREND` | Price falling (linear regression slope < 0) |
+| 3 | `OSCILLATING` | Price oscillating around mean with meaningful ATR |
+| 4 | `FLAT` | Very tight range, low volatility |
+| 5 | `OTHER` | No dominant trend detected |
+| 6 | `ABNORMAL` | Any trend that reaches EXTREME intensity |
+
+### Intensity
+
+Each trend (except FLAT and OTHER) carries an intensity level:
+
+| Value | Name | Uptrend/Downtrend threshold | Oscillating threshold |
+|-------|------|-----------------------------|-----------------------|
+| 1 | `NORMAL` | slope < 0.3%/bar | ATR/price < 3% |
+| 2 | `STRONG` | slope 0.3%–0.8%/bar | ATR/price 3%–6% |
+| 3 | `EXTREME` | slope > 0.8%/bar | ATR/price > 6% |
+
+When intensity reaches **EXTREME**, the trend is automatically promoted to `ABNORMAL` (type 6).
+`result.base_trend` preserves the original trend type (e.g. `UPTREND`) for downstream use.
+
+### Usage
+
+```python
+from trend import detect_trend, TrendType, TrendIntensity
+
+result = detect_trend(bars, n=30)   # last 30 bars of OHLCV DataFrame
+
+int(result.trend)          # 1–6
+result.trend.name          # UPTREND, ABNORMAL, etc.
+result.intensity.name      # NORMAL, STRONG, EXTREME
+result.confidence          # 0.0–1.0
+result.is_abnormal         # True when intensity == EXTREME
+result.base_trend          # original trend when ABNORMAL, else None
+result.description         # human-readable detail string
+```
+
+### File Layout
+
+| File | Role |
+|------|------|
+| `base.py` | `TrendType`, `TrendIntensity`, `TrendResult`, `TrendDetector` protocol |
+| `uptrend.py` | Linear-regression slope detector |
+| `downtrend.py` | Linear-regression slope detector (negative) |
+| `oscillating.py` | Mean-crossing + ATR detector |
+| `flat.py` | Tight-range detector |
+| `other.py` | Fallback |
+| `abnormal.py` | `wrap_as_abnormal()` helper |
+| `detector.py` | `detect_trend()` — runs the pipeline, returns best match |
+
+### Extending
+
+To add a new trend type (e.g. `BREAKOUT = 7`):
+1. Add the value to `TrendType` in `base.py`.
+2. Create `trend/breakout.py` with a `detect_breakout(bars) -> TrendResult` function.
+3. Append `(detect_breakout, {})` to `_DEFAULT_PIPELINE` in `detector.py`.
+
+You can also pass a fully custom pipeline at call time:
+```python
+from trend.uptrend import detect_uptrend
+result = detect_trend(bars, pipeline=[(detect_uptrend, {"slope_min": 0.001})])
+```
+
+---
 ## Extending the Framework
 
 - **New signal:** add a function `fn(close: pd.Series) -> pd.Series` returning 0/1 in `signals/`.
 - **New strategy:** subclass `BaseStrategy`, implement `run()`, use `buy()`/`sell()` from `tools/trade.py`.
 - **New data source:** add a loader in `data/` that returns a DataFrame with lowercase OHLCV columns.
+- **New trend type:** add to `TrendType` in `trend/base.py`, create a detector file, register in `_DEFAULT_PIPELINE`. See the Trend Detection section above.
