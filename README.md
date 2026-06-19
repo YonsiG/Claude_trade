@@ -193,6 +193,7 @@ Each trend (except FLAT and OTHER) carries an intensity level:
 
 When intensity reaches **EXTREME**, the trend is automatically promoted to `ABNORMAL` (type 6).
 `result.base_trend` preserves the original trend type (e.g. `UPTREND`) for downstream use.
+result.duration            # bars going backwards this trend holds; 0 = not computed
 
 ### Usage
 
@@ -200,6 +201,7 @@ When intensity reaches **EXTREME**, the trend is automatically promoted to `ABNO
 from trend import detect_trend, TrendType, TrendIntensity
 
 result = detect_trend(bars, n=30)   # last 30 bars of OHLCV DataFrame
+result = detect_trend(bars, compute_duration=False)  # skip duration for speed
 
 int(result.trend)          # 1–6
 result.trend.name          # UPTREND, ABNORMAL, etc.

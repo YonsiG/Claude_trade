@@ -1,5 +1,5 @@
 from enum import IntEnum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import pandas as pd
 from typing import Protocol, Optional
 
@@ -26,6 +26,7 @@ class TrendResult:
     description: str
     intensity:   TrendIntensity = TrendIntensity.NORMAL
     base_trend:  Optional[TrendType] = None
+    duration:    int = 0  # consecutive bars covered; 0 = not computed
 
     @property
     def is_abnormal(self) -> bool:
