@@ -9,6 +9,7 @@
 import argparse
 
 from data.loader import load
+from signals.pattern import engulfing
 from signals.pattern import umbrella
 from strategies.single_signal import SingleSignalStrategy
 from backtest import engine
@@ -19,7 +20,7 @@ def _build_registry(df, capital):
     return {
         "single_signal": SingleSignalStrategy(
             df,
-            signal_fn=umbrella,
+            signal_fn=engulfing,
             trail_pct=0.30,
             sl_pct=0.10,
             initial_capital=capital,
@@ -34,7 +35,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="回测主入口")
     p.add_argument("--ticker",   default="AAPL",          help="标的代码 (默认: AAPL)")
     p.add_argument("--start",    default="2020-01-01",    help="起始日期 YYYY-MM-DD")
-    p.add_argument("--end",      default="2024-12-31",    help="结束日期 YYYY-MM-DD")
+    p.add_argument("--end",      default="2026-06-19",    help="结束日期 YYYY-MM-DD")
     p.add_argument("--interval", default="1d",            help="K线周期 (默认: 1d)")
     p.add_argument("--source",   default="yf",            choices=["yf", "ak"],
                    help="数据源 (默认: yf)")
@@ -55,7 +56,7 @@ def main():
     # 2. 选择策略
     registry = _build_registry(df, args.capital)
     if args.strategy not in registry:
-        raise ValueError(f"未知策略: {args.strategy\!r}，可选: {list(registry)}")
+        raise ValueError(f"未知策略: {args.strategy!r}，可选: {list(registry)}")
     strategy = registry[args.strategy]
 
     # 3. 回测

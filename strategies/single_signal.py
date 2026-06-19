@@ -43,7 +43,7 @@ class SingleSignalStrategy(BaseStrategy):
             sig = signal.loc[date]
 
             # 1. 检查止盈止损（持仓中才触发）
-            if state["shares"] \!= 0:
+            if state["shares"] != 0:
                 if trailing_take_profit(state, price, self.trail_pct, **kwargs):
                     entry_price = None
                 elif capital_stop_loss(state, price, entry_price, self.sl_pct, **kwargs):
