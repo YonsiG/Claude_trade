@@ -16,7 +16,7 @@ def is_engulfing(df: pd.DataFrame, doji_ratio: float = 0.1) -> pd.Series:
     doji = is_doji(df, doji_ratio)
 
     covers = (body_low <= body_low.shift(1)) & (body_high >= body_high.shift(1))
-    opposite_color = bullish \!= bullish.shift(1)
+    opposite_color = bullish != bullish.shift(1)
     prev_doji = doji.shift(1).fillna(False)
 
     return covers & (opposite_color | prev_doji)

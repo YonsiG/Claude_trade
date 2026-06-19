@@ -1,0 +1,168 @@
+# ============================================================
+# Futures Ticker Reference
+# source=ak  : akshare, futures_zh_daily_sina / futures_zh_minute_sina
+# source=yf  : yfinance (Yahoo Finance continuous contracts)
+# interval   : 1d / 1h / 30m / 15m / 5m / 1m
+#              ak intraday (non-1d): recent ~1000 bars only via Sina
+# ============================================================
+
+# ------------------------------------------------------------
+# [ak] 内盘期货 — 上海期货交易所 SHFE
+# ------------------------------------------------------------
+RB0     ak  螺纹钢          Rebar
+HC0     ak  热轧卷板        Hot-Rolled Coil
+WR0     ak  线材            Wire Rod
+CU0     ak  铜              Copper
+AL0     ak  铝              Aluminum
+ZN0     ak  锌              Zinc
+PB0     ak  铅              Lead
+NI0     ak  镍              Nickel
+SN0     ak  锡              Tin
+SS0     ak  不锈钢          Stainless Steel
+AU0     ak  黄金            Gold
+AG0     ak  白银            Silver
+RU0     ak  天然橡胶        Natural Rubber
+FU0     ak  燃油            Fuel Oil
+BU0     ak  沥青            Asphalt
+SP0     ak  纸浆            Pulp
+
+# ------------------------------------------------------------
+# [ak] 内盘期货 — 上海国际能源交易中心 INE
+# ------------------------------------------------------------
+SC0     ak  原油            Crude Oil (INE)
+NR0     ak  20号胶          TSR 20 Rubber
+LU0     ak  低硫燃料油      Low-Sulfur Fuel Oil
+BC0     ak  国际铜          International Copper
+
+# ------------------------------------------------------------
+# [ak] 内盘期货 — 大连商品交易所 DCE
+# ------------------------------------------------------------
+A0      ak  豆一            Soybean No.1
+B0      ak  豆二            Soybean No.2
+C0      ak  玉米            Corn
+CS0     ak  玉米淀粉        Corn Starch
+M0      ak  豆粕            Soybean Meal
+Y0      ak  豆油            Soybean Oil
+P0      ak  棕榈油          Palm Oil
+L0      ak  聚乙烯          Polyethylene (LLDPE)
+V0      ak  聚氯乙烯        PVC
+PP0     ak  聚丙烯          Polypropylene
+J0      ak  焦炭            Coke
+JM0     ak  焦煤            Coking Coal
+I0      ak  铁矿石          Iron Ore
+EG0     ak  乙二醇          Ethylene Glycol
+EB0     ak  苯乙烯          Styrene
+PG0     ak  液化石油气      LPG
+LH0     ak  生猪            Live Hog
+JD0     ak  鸡蛋            Egg
+
+# ------------------------------------------------------------
+# [ak] 内盘期货 — 郑州商品交易所 CZCE
+# ------------------------------------------------------------
+SR0     ak  白糖            Sugar
+CF0     ak  棉花            Cotton
+OI0     ak  菜油            Rapeseed Oil
+RM0     ak  菜粕            Rapeseed Meal
+MA0     ak  甲醇            Methanol
+TA0     ak  PTA             PTA
+FG0     ak  玻璃            Glass
+ZC0     ak  动力煤          Thermal Coal
+AP0     ak  苹果            Apple
+CJ0     ak  红枣            Red Date
+PF0     ak  短纤            Short Fiber PET
+PK0     ak  花生            Peanut
+SA0     ak  纯碱            Soda Ash
+UR0     ak  尿素            Urea
+SF0     ak  硅铁            Ferrosilicon
+SM0     ak  锰硅            Silicomanganese
+WH0     ak  强筋小麦        Hard Wheat
+RS0     ak  菜籽            Rapeseed
+
+# ------------------------------------------------------------
+# [ak] 内盘期货 — 中国金融期货交易所 CFFEX
+# ------------------------------------------------------------
+IF0     ak  沪深300股指     CSI 300 Index Futures
+IH0     ak  上证50股指      SSE 50 Index Futures
+IC0     ak  中证500股指     CSI 500 Index Futures
+IM0     ak  中证1000股指    CSI 1000 Index Futures
+T0      ak  10年期国债      10-Year Treasury Bond Futures
+TF0     ak  5年期国债       5-Year Treasury Bond Futures
+TS0     ak  2年期国债       2-Year Treasury Bond Futures
+TL0     ak  30年期国债      30-Year Treasury Bond Futures
+
+# ------------------------------------------------------------
+# [ak] 内盘期货 — 广州期货交易所 GFEX
+# ------------------------------------------------------------
+SI0     ak  工业硅          Industrial Silicon
+LC0     ak  碳酸锂          Lithium Carbonate
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 农产品 Agriculture
+# ------------------------------------------------------------
+ZS=F    yf  美豆            Soybeans
+ZC=F    yf  美玉米          Corn
+ZW=F    yf  美小麦          Wheat (CBOT)
+ZO=F    yf  燕麦            Oats
+ZR=F    yf  糙米            Rough Rice
+ZL=F    yf  豆油            Soybean Oil
+ZM=F    yf  美豆粕          Soybean Meal
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 能源 Energy
+# ------------------------------------------------------------
+CL=F    yf  WTI原油         Crude Oil WTI
+BZ=F    yf  布伦特原油      Brent Crude Oil
+NG=F    yf  天然气          Natural Gas
+RB=F    yf  汽油            RBOB Gasoline
+HO=F    yf  取暖油          Heating Oil
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 金属 Metals
+# ------------------------------------------------------------
+GC=F    yf  美黄金          Gold
+SI=F    yf  美白银          Silver
+HG=F    yf  美铜            Copper
+PL=F    yf  铂金            Platinum
+PA=F    yf  钯金            Palladium
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 股指 Equity Index
+# ------------------------------------------------------------
+ES=F    yf  标普500         S&P 500 E-mini
+NQ=F    yf  纳指100         Nasdaq 100 E-mini
+YM=F    yf  道琼斯          Dow Jones E-mini
+RTY=F   yf  罗素2000        Russell 2000 E-mini
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 软商品 Softs
+# ------------------------------------------------------------
+CC=F    yf  可可            Cocoa
+KC=F    yf  咖啡            Coffee
+CT=F    yf  美棉            Cotton
+SB=F    yf  原糖            Sugar No.11
+OJ=F    yf  冻橙汁          Frozen Orange Juice
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 畜牧 Livestock
+# ------------------------------------------------------------
+LE=F    yf  活牛            Live Cattle
+GF=F    yf  饲牛            Feeder Cattle
+HE=F    yf  瘦猪肉          Lean Hogs
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 国债 Treasuries
+# ------------------------------------------------------------
+ZN=F    yf  10年期美债      10-Year T-Note
+ZB=F    yf  30年期美债      30-Year T-Bond
+ZT=F    yf  2年期美债       2-Year T-Note
+ZF=F    yf  5年期美债       5-Year T-Note
+
+# ------------------------------------------------------------
+# [yf] 美盘期货 — 外汇 FX
+# ------------------------------------------------------------
+6E=F    yf  欧元            Euro FX
+6J=F    yf  日元            Japanese Yen
+6B=F    yf  英镑            British Pound
+6A=F    yf  澳元            Australian Dollar
+6C=F    yf  加元            Canadian Dollar
+DX=F    yf  美元指数        US Dollar Index
