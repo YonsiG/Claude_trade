@@ -1,0 +1,5 @@
+GLD
+SLV
+NVDA
+AAPL
+SPY
