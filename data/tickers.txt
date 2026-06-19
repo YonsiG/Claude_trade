@@ -1,5 +1,20 @@
-GLD
-SLV
-NVDA
-AAPL
-SPY
+# ticker   source   name
+# ── US stocks / ETFs (yfinance) ──────────────────────────────
+GLD        yf       黄金ETF
+SLV        yf       白银ETF
+NVDA       yf       英伟达
+AAPL       yf       苹果
+SPY        yf       标普500ETF
+# ── US futures (yfinance) ────────────────────────────────────
+ZS=F       yf       美豆
+ZC=F       yf       美玉米
+NQ=F       yf       纳指100
+GC=F       yf       黄金期货
+SI=F       yf       白银期货
+# ── CN futures (akshare) ─────────────────────────────────────
+LH0        ak       生猪
+JD0        ak       鸡蛋
+AU0        ak       黄金
+AG0        ak       白银
+RB0        ak       螺纹钢
+M0         ak       豆粕

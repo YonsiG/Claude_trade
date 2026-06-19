@@ -1,134 +1,152 @@
 # Claude Trade Expert
 
-A modular quantitative trading framework for signal-based strategy research and backtesting.
+基于信号驱动的模块化量化交易研究框架，支持策略回测与市场状态识别。
 
 ---
 
-## Project Structure
+## 项目结构
 
 ```
 claude_trade_expert/
-├── data/           # Data downloading and caching
-├── signals/        # Atomic signal functions (buy/sell indicators)
-├── trend/          # Market regime / trend detection
-├── tools/          # Position management primitives (buy, sell)
-├── strategies/     # Strategy logic combining signals
-├── backtest/       # Backtesting engine, metrics, plots
-└── run_example.py  # End-to-end example
+├── data/           # 数据下载与缓存（yfinance + akshare）
+├── signals/        # 原子信号函数（买卖指标）
+├── trend/          # 市场状态识别（趋势检测）
+├── tools/          # 仓位管理原语（买入、卖出）
+├── strategies/     # 策略逻辑（组合信号）
+├── backtest/       # 回测引擎、绩效指标、图表
+└── run_example.py  # 端到端示例
 ```
 
 ---
 
-## Data (`data/`)
+## 数据模块（`data/`）
 
-**`loader.py`** downloads OHLCV data from yfinance and caches it locally under `data/raw/`.
+详见 [data/README.md](data/README.md)。
+
+`loader.py` 支持双数据源，并自动缓存到本地 CSV：
 
 ```python
 from data.loader import load
 
-df = load("AAPL", "2020-01-01", "2024-12-31")
+# yfinance：美股 / ETF / 美盘期货
+df = load("GC=F", "2021-01-01", "2024-12-31", interval="1d", source="yf")
+
+# akshare：国内期货
+df = load("AU0", "2021-01-01", "2024-12-31", interval="1d", source="ak")
 ```
 
-- First call downloads and saves to CSV.
-- Subsequent calls load from cache automatically.
-- Columns are normalized to lowercase: `open`, `high`, `low`, `close`, `volume`.
+批量下载：
+
+```bash
+python data/fetch.py           # 全部品种，日线，近 5 年
+python data/fetch.py --month   # 小时线，近 30 天
+python data/fetch.py --day     # 分钟线，近 5 天
+```
 
 ---
 
-## Signals (`signals/`)
+## 信号模块（`signals/`）
 
-Each signal function takes a `pd.Series` of closing prices and returns a `pd.Series` of `0` or `1` for every date.
+详见 [signals/README.md](signals/README.md)。
 
-| Function | Returns 1 when... |
-|----------|-------------------|
-| `is_increase(close, n=3)` | Price has risen for `n` consecutive days |
-| `is_decrease(close, n=3)` | Price has fallen for `n` consecutive days |
-| `is_consolidation(close, n=5, threshold=0.02)` | Price range over `n` days is within `threshold` (e.g. 2%) |
+每个信号函数接收收盘价 `pd.Series`，返回逐 bar 的 0/1 信号序列。
 
-To add a new signal, define a function with the signature `fn(close: pd.Series) -> pd.Series` in `signals/price_signals.py` (or a new file under `signals/`).
+| 函数 | 触发条件 |
+|------|----------|
+| `is_increase(close, n=3)` | 连续 n 日上涨 |
+| `is_decrease(close, n=3)` | 连续 n 日下跌 |
+| `is_consolidation(close, n=5, threshold=0.02)` | n 日内价格振幅小于阈值 |
+
+新增信号：在 `signals/` 下定义 `fn(close: pd.Series) -> pd.Series` 即可。
 
 ---
 
-## Tools (`tools/`)
+## 仓位工具（`tools/`）
 
-**`trade.py`** provides two stateful position management functions. Both operate on a shared `state` dict with keys `cash` and `shares`.
+`trade.py` 提供两个有状态的仓位管理函数，共享 `state` 字典（含 `cash` 和 `shares`）：
 
 ```python
 state = {"cash": 100_000, "shares": 0.0}
 
-buy(state, price)   # converts all cash to shares; no-op if already holding
-sell(state, price)  # liquidates all shares to cash; no-op if flat
+buy(state, price)   # 全仓买入；已持仓时不操作
+sell(state, price)  # 全仓卖出；空仓时不操作
 ```
 
-These are the only two functions that modify positions. All strategies must go through them.
+所有策略必须通过这两个函数修改仓位。
 
 ---
 
-## Strategies (`strategies/`)
+## 策略模块（`strategies/`）
 
-### `BaseStrategy` (abstract)
-
-All strategies inherit from `BaseStrategy`:
+### `BaseStrategy`（抽象基类）
 
 ```python
 class BaseStrategy(ABC):
     def __init__(self, df: pd.DataFrame, initial_capital: float = 100_000): ...
-    def run(self) -> pd.Series: ...  # must return equity curve indexed by date
+    def run(self) -> pd.Series: ...  # 返回以日期为索引的资金曲线
 ```
 
 ### `MultiSignalStrategy`
 
-Combines multiple buy signals and sell signals independently.
+组合多个买入信号和卖出信号：
 
 ```python
 from strategies.multi_signal import MultiSignalStrategy
 
 strategy = MultiSignalStrategy(
     df,
-    buy_signals=[is_increase],   # list of signal functions
+    buy_signals=[is_increase],
     sell_signals=[is_decrease],
-    buy_threshold=1,             # buy when >= this many buy signals fire
-    sell_threshold=1,            # sell when >= this many sell signals fire
+    buy_threshold=1,   # 满足 >= 1 个买信号时买入
+    sell_threshold=1,  # 满足 >= 1 个卖信号时卖出
     initial_capital=100_000,
 )
 ```
 
-**Logic per bar:**
-1. Compute buy score = sum of all buy signal values at that date.
-2. Compute sell score = sum of all sell signal values at that date.
-3. If `buy_score >= buy_threshold` → call `buy()`.
-4. Else if `sell_score >= sell_threshold` → call `sell()`.
-5. Record current portfolio value (cash + shares × price) as equity.
-
-Buy and sell conditions are checked in that order; buy takes priority.
+每根 bar 的逻辑：买信号得分 >= 阈值 → 买入；否则卖信号得分 >= 阈值 → 卖出。买优先于卖。
 
 ---
 
-## Backtest (`backtest/`)
-
-**`engine.py`** runs a strategy and computes performance metrics.
+## 回测模块（`backtest/`）
 
 ```python
 from backtest import engine
 
 summary = engine.run(ticker, start, end, strategy)
-# summary keys: ticker, total_return, sharpe, max_drawdown, equity_curve
+# summary 包含：ticker, total_return, sharpe, max_drawdown, equity_curve
 
-engine.plot(summary, "MyStrategy")         # saves PNG to backtest/plots/
-engine.save_results(summary, "MyStrategy") # saves CSV to backtest/results/
+engine.plot(summary, "策略名称")          # 保存 PNG 到 backtest/plots/
+engine.save_results(summary, "策略名称")  # 保存 CSV 到 backtest/results/
 ```
 
-Metrics computed:
-
-| Metric | Description |
-|--------|-------------|
-| Total Return | `(final / initial - 1) × 100` % |
-| Sharpe Ratio | Annualized (252 trading days), using daily returns |
-| Max Drawdown | Maximum peak-to-trough decline as % |
+| 指标 | 说明 |
+|------|------|
+| 总收益率 | `(期末 / 期初 - 1) × 100%` |
+| 夏普比率 | 年化（252 交易日），基于日收益率 |
+| 最大回撤 | 历史峰值到谷底的最大跌幅 |
 
 ---
 
-## Quick Start
+## 趋势识别（`trend/`）
+
+详见 [trend/README.md](trend/README.md)。
+
+识别最近 N 根 K 线的**市场状态**，与买卖信号独立：
+
+```python
+from trend import detect_trend
+
+result = detect_trend(bars, n=30)
+result.trend.name      # UPTREND / DOWNTREND / OSCILLATING / FLAT / OTHER / ABNORMAL
+result.intensity.name  # NORMAL / STRONG / EXTREME
+result.confidence      # 0.0–1.0
+result.duration        # 当前状态已持续的 bar 数
+result.description     # 人类可读的详情字符串
+```
+
+---
+
+## 快速开始
 
 ```python
 from data.loader import load
@@ -147,15 +165,15 @@ strategy = MultiSignalStrategy(
 )
 
 summary = engine.run("AAPL", "2020-01-01", "2024-12-31", strategy)
-print(f"Total Return : {summary['total_return']:.2f}%")
-print(f"Sharpe Ratio : {summary['sharpe']:.2f}")
-print(f"Max Drawdown : {summary['max_drawdown']:.2f}%")
+print(f"总收益率：{summary['total_return']:.2f}%")
+print(f"夏普比率：{summary['sharpe']:.2f}")
+print(f"最大回撤：{summary['max_drawdown']:.2f}%")
 
 engine.plot(summary, "MultiSignal")
 engine.save_results(summary, "MultiSignal")
 ```
 
-Or just run:
+或直接运行：
 
 ```bash
 python run_example.py
@@ -163,85 +181,9 @@ python run_example.py
 
 ---
 
+## 扩展指南
 
-## Trend Detection (`trend/`)
-
-Identifies the **market regime** of a given price series, independent of any buy/sell signal.
-Unlike signals, trend functions do not output 0/1 per bar — they classify the overall character
-of the last N bars as a single trend type.
-
-### Trend Types
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 1 | `UPTREND` | Price rising (linear regression slope > 0) |
-| 2 | `DOWNTREND` | Price falling (linear regression slope < 0) |
-| 3 | `OSCILLATING` | Price oscillating around mean with meaningful ATR |
-| 4 | `FLAT` | Very tight range, low volatility |
-| 5 | `OTHER` | No dominant trend detected |
-| 6 | `ABNORMAL` | Any trend that reaches EXTREME intensity |
-
-### Intensity
-
-Each trend (except FLAT and OTHER) carries an intensity level:
-
-| Value | Name | Uptrend/Downtrend threshold | Oscillating threshold |
-|-------|------|-----------------------------|-----------------------|
-| 1 | `NORMAL` | slope < 0.3%/bar | ATR/price < 3% |
-| 2 | `STRONG` | slope 0.3%–0.8%/bar | ATR/price 3%–6% |
-| 3 | `EXTREME` | slope > 0.8%/bar | ATR/price > 6% |
-
-When intensity reaches **EXTREME**, the trend is automatically promoted to `ABNORMAL` (type 6).
-`result.base_trend` preserves the original trend type (e.g. `UPTREND`) for downstream use.
-result.duration            # consecutive bars this trend holds going back; 0 = not computed
-
-### Usage
-
-```python
-from trend import detect_trend, TrendType, TrendIntensity
-
-result = detect_trend(bars, n=30)   # last 30 bars of OHLCV DataFrame
-result = detect_trend(bars, compute_duration=False)  # skip duration for speed
-
-int(result.trend)          # 1–6
-result.trend.name          # UPTREND, ABNORMAL, etc.
-result.intensity.name      # NORMAL, STRONG, EXTREME
-result.confidence          # 0.0–1.0
-result.is_abnormal         # True when intensity == EXTREME
-result.base_trend          # original trend when ABNORMAL, else None
-result.description         # human-readable detail string
-```
-
-### File Layout
-
-| File | Role |
-|------|------|
-| `base.py` | `TrendType`, `TrendIntensity`, `TrendResult`, `TrendDetector` protocol |
-| `uptrend.py` | Linear-regression slope detector |
-| `downtrend.py` | Linear-regression slope detector (negative) |
-| `oscillating.py` | Mean-crossing + ATR detector |
-| `flat.py` | Tight-range detector |
-| `other.py` | Fallback |
-| `abnormal.py` | `wrap_as_abnormal()` helper |
-| `detector.py` | `detect_trend()` — runs the pipeline, returns best match |
-
-### Extending
-
-To add a new trend type (e.g. `BREAKOUT = 7`):
-1. Add the value to `TrendType` in `base.py`.
-2. Create `trend/breakout.py` with a `detect_breakout(bars) -> TrendResult` function.
-3. Append `(detect_breakout, {})` to `_DEFAULT_PIPELINE` in `detector.py`.
-
-You can also pass a fully custom pipeline at call time:
-```python
-from trend.uptrend import detect_uptrend
-result = detect_trend(bars, pipeline=[(detect_uptrend, {"slope_min": 0.001})])
-```
-
----
-## Extending the Framework
-
-- **New signal:** add a function `fn(close: pd.Series) -> pd.Series` returning 0/1 in `signals/`.
-- **New strategy:** subclass `BaseStrategy`, implement `run()`, use `buy()`/`sell()` from `tools/trade.py`.
-- **New data source:** add a loader in `data/` that returns a DataFrame with lowercase OHLCV columns.
-- **New trend type:** add to `TrendType` in `trend/base.py`, create a detector file, register in `_DEFAULT_PIPELINE`. See the Trend Detection section above.
+- **新增信号**：在 `signals/` 下添加 `fn(close: pd.Series) -> pd.Series`（返回 0/1）
+- **新增策略**：继承 `BaseStrategy`，实现 `run()`，仓位操作通过 `buy()`/`sell()`
+- **新增数据源**：在 `data/` 下添加返回小写 OHLCV 列的 DataFrame 的 loader
+- **新增趋势类型**：在 `trend/base.py` 的 `TrendType` 中添加枚举值，新建检测文件，注册到 `_DEFAULT_PIPELINE`
