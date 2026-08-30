@@ -4,6 +4,9 @@ GLD        yf       黄金ETF
 SLV        yf       白银ETF
 NVDA       yf       英伟达
 AAPL       yf       苹果
+AMD        yf       AMD
+GOOGL      yf       谷歌
+TSLA       yf       特斯拉
 SPY        yf       标普500ETF
 # ── US futures (yfinance) ────────────────────────────────────
 ZS=F       yf       美豆

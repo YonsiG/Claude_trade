@@ -1,9 +1,8 @@
-import numpy as np
-import pandas as pd
+"""下降趋势检测。判定门槛与 confidence 语义完全对称于 uptrend.py。"""
 from .base import TrendResult, TrendType, TrendIntensity
+from .uptrend import fit_line, grade, _SLOPE_MIN, _R2_MIN
+from .uptrend import _STRONG_THRESHOLD, _EXTREME_THRESHOLD
 
-_STRONG_THRESHOLD  = 0.003
-_EXTREME_THRESHOLD = 0.008
 
 def _intensity(slope_pct):
     abs_pct = abs(slope_pct)
@@ -13,19 +12,20 @@ def _intensity(slope_pct):
         return TrendIntensity.STRONG
     return TrendIntensity.NORMAL
 
-def detect_downtrend(bars, slope_max=0.0):
-    close = bars["close"].values.astype(float)
-    x = np.arange(len(close))
-    if len(x) < 2:
+
+def detect_downtrend(bars, slope_min=_SLOPE_MIN, r2_min=_R2_MIN):
+    slope_pct, r2 = fit_line(bars)
+    if slope_pct is None:
         return TrendResult(TrendType.OTHER, 0.0, "not enough bars")
-    coeffs    = np.polyfit(x, close, 1)
-    slope     = coeffs[0]
-    slope_pct = slope / close.mean() if close.mean() else 0.0
-    predicted = np.polyval(coeffs, x)
-    ss_res = np.sum((close - predicted) ** 2)
-    ss_tot = np.sum((close - close.mean()) ** 2)
-    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
-    if slope < slope_max:
-        return TrendResult(TrendType.DOWNTREND, float(np.clip(r2,0,1)),
-                           f"slope_pct={slope_pct:.4f}", intensity=_intensity(slope_pct))
-    return TrendResult(TrendType.OTHER, 0.0, f"slope={slope:.4f} not downtrend")
+
+    if -slope_pct < slope_min:
+        return TrendResult(TrendType.OTHER, 0.0,
+                           f"slope_pct={slope_pct:.5f} > -{slope_min} not downtrend")
+    if r2 < r2_min:
+        return TrendResult(TrendType.OTHER, 0.0,
+                           f"slope_pct={slope_pct:.5f} but r2={r2:.2f} < {r2_min} (not linear)")
+
+    return TrendResult(TrendType.DOWNTREND,
+                       grade(slope_pct, r2, slope_min, r2_min),
+                       f"slope_pct={slope_pct:.5f}, r2={r2:.2f}",
+                       intensity=_intensity(slope_pct))

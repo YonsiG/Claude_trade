@@ -10,6 +10,13 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 
+# loader is imported both as `data.loader` (package) and as `loader`
+# (flat, from data/fetch.py) — support both.
+try:
+    from .adjust import adjust_rollover
+except ImportError:
+    from adjust import adjust_rollover
+
 # ── Proxy config ──────────────────────────────────────────────────────────────
 # Set to your local VPN proxy address so yfinance uses it.
 # akshare (Sina) routes through domestic servers and does NOT use this proxy.
@@ -24,9 +31,14 @@ RAW_DIR = Path(__file__).parent / "raw"
 _VALID_SOURCES = {"yf", "ak"}
 
 
+def _is_futures(ticker: str, source: str) -> bool:
+    """All akshare tickers here are futures; yfinance futures end with '=F'."""
+    return source == "ak" or ticker.endswith("=F")
+
+
 def _resolve_dir(ticker: str, source: str) -> Path:
     """Route to raw/futures/{source}/ or raw/stock/yf/ based on ticker and source."""
-    if source == "ak" or ticker.endswith("=F"):
+    if _is_futures(ticker, source):
         d = RAW_DIR / "futures" / source
     else:
         d = RAW_DIR / "stock" / source
@@ -138,7 +150,9 @@ def _download_ak(ticker: str, start: str, end: str, interval: str) -> pd.DataFra
     df = df.set_index("datetime")
     df.index = pd.to_datetime(df.index)
     df.index.name = None
-    keep = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+    # hold = 持仓量。主力连续在换月时切换标的合约，持仓量必然断裂，
+    # 而涨跌停、节后缺口不会 —— 这是识别换月最可靠的信号，务必保留。
+    keep = [c for c in ["open", "high", "low", "close", "volume", "hold"] if c in df.columns]
     df = df[keep].astype(float)
     return df.loc[start:end]
 
@@ -189,7 +203,10 @@ def download(ticker: str, start: str, end: str,
 
 
 def load(ticker: str, start: str, end: str,
-         interval: str = "1d", source: str = "yf") -> pd.DataFrame:
+         interval: str = "1d", source: str = "yf",
+         adjust: bool | None = None,
+         adjust_threshold: float = 0.02,
+         roll_dates=None) -> pd.DataFrame:
     """
     Load OHLCV data for [start, end] at the given interval.
 
@@ -205,9 +222,36 @@ def load(ticker: str, start: str, end: str,
         end:      "YYYY-MM-DD"
         interval: "1d" (default) | "1h" | "30m" | "15m" | "5m" | "1m"
         source:   "yf" | "ak"
+        adjust:   Back-adjust continuous-contract rollover gaps.
+                  None (default) = on for futures, off for stocks/ETFs.
+                  Pass False to get the raw stitched series.
+        adjust_threshold: Opening gap above this fraction counts as a roll
+                  (0.02 = 2%). Raise it for intraday bars, where normal
+                  overnight moves would otherwise be mistaken for rolls.
+        roll_dates: Explicit roll timestamps, overriding the threshold. The
+                  heuristic also flags genuine gaps (limit moves, holiday
+                  reopenings) — inspect data.adjust.rollover_report() first.
+
+    Note: the cached CSV always holds the raw series; adjustment is applied
+    on the returned slice, so changing the threshold needs no re-download.
     """
     if source not in _VALID_SOURCES:
         raise ValueError(f"Unknown source '{source}'. Choose: {list(_VALID_SOURCES)}")
+
+    if adjust is None:
+        adjust = _is_futures(ticker, source)
+
+    def _finish(frame: pd.DataFrame) -> pd.DataFrame:
+        if source == "ak" and "hold" not in frame.columns:
+            tqdm.write(
+                f"  提示: {ticker} 的缓存文件不含 hold（持仓量）列，换月识别将退回"
+                f"纯价格跳空阈值（易把涨跌停/节后缺口误判为换月）。"
+                f"删除 {raw_dir} 下的对应 CSV 重新下载即可启用持仓量识别。"
+            )
+        sliced = frame.loc[start:end]
+        if not adjust:
+            return sliced
+        return adjust_rollover(sliced, adjust_threshold, roll_dates)
 
     raw_dir = _resolve_dir(ticker, source)
     existing: list[tuple[Path, str, str]] = []
@@ -222,7 +266,7 @@ def load(ticker: str, start: str, end: str,
             if df.empty:
                 path.unlink()  # stale empty cache — delete and fall through to re-download
                 continue
-            return df.loc[start:end]
+            return _finish(df)
 
         existing.append((path, info["start"], info["end"]))
 
@@ -234,4 +278,4 @@ def load(ticker: str, start: str, end: str,
         path.unlink()
 
     df = download(ticker, union_start, union_end, interval, source=source, save=True)
-    return df.loc[start:end]
+    return _finish(df)
