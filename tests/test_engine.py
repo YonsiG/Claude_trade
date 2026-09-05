@@ -153,3 +153,22 @@ def test_portfolio_report_renders():
 def test_empty_portfolio_raises():
     with pytest.raises(ValueError):
         run_portfolio({})
+
+
+def test_duplicate_sleeve_names_raise():
+    """list 形式允许重复 key；不拦住的话会让两个不同标的的结果互相顶替。"""
+    up = make_ohlc([[p, p * 1.01, p * 0.99, p] for p in ramp(10, 1.01)])
+    a = SingleSignalStrategy(up, flat_signal, trail_pct=None, sl_pct=None)
+    b = SingleSignalStrategy(up, flat_signal, trail_pct=None, sl_pct=None)
+    with pytest.raises(ValueError, match="重复"):
+        run_portfolio([("X", a), ("X", b)], capital=100_000)
+
+
+def test_portfolio_does_not_mutate_strategy_initial_capital():
+    """run_portfolio 只是借用策略对象跑一遍，不该在调用者手里留下痕迹——
+    否则同一批策略实例被反复用不同 capital 调用时，上一次的覆盖值会残留。"""
+    sleeves = build_sleeves()
+    originals = {name: s.initial_capital for name, s in sleeves.items()}
+    run_portfolio(sleeves, capital=999_000)
+    for name, s in sleeves.items():
+        assert s.initial_capital == pytest.approx(originals[name])

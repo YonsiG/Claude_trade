@@ -1,5 +1,4 @@
 import pandas as pd
-from typing import Sequence
 
 from .base import TrendResult, TrendType, TrendIntensity
 from .uptrend import detect_uptrend
