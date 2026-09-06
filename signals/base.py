@@ -34,9 +34,19 @@ class Signal(NamedTuple):
 
     @classmethod
     def from_strength(cls, strength: pd.Series) -> "Signal":
-        """把旧式 [-1, 1] 连续信号拆成 (方向, 仓位)。"""
-        entry = pd.Series(np.sign(strength.values).astype(int), index=strength.index)
-        size = strength.abs().clip(0.0, 1.0)
+        """
+        把旧式 [-1, 1] 连续信号拆成 (方向, 仓位)。
+
+        NaN 视为无信号（entry=0, size=0）——滚动指标（均线、RSI 等）暖机期
+        必然产生 NaN，直接丢给 np.sign().astype(int) 会把 NaN 转成一个
+        荒谬的垃圾整数（NaN 转 int64 是未定义行为，不会报错，实测得到
+        -9223372036854775808），而不是抛错或安全归零。下游 Signal.validate()
+        虽然会因为这个值不在 {-1,0,1} 里而拦下来，但报错信息会让人一头雾水，
+        不如在源头就按"无信号"处理。
+        """
+        s = strength.fillna(0.0)
+        entry = pd.Series(np.sign(s.values).astype(int), index=strength.index)
+        size = s.abs().clip(0.0, 1.0)
         return cls(entry, size)
 
     # ── 校验 ────────────────────────────────────────────────────────────────

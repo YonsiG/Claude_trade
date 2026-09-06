@@ -53,16 +53,26 @@ def run_portfolio(sleeves, capital: float = None, weights=None,
     """
     Args:
         sleeves: {名称: 已实例化的策略} 或 [(名称, 策略), ...]
-        capital: 组合总资金。给了就按 weights 切分并**覆盖**各策略的
-                 initial_capital；不给则沿用各策略自带的资金，总额为其之和。
+        capital: 组合总资金。给了就按 weights 切分并临时覆盖各策略的
+                 initial_capital（调用结束后恢复原值，不会污染传入的策略对象——
+                 见下方"不留副作用"说明）；不给则沿用各策略自带的资金，总额为其之和。
         weights: {名称: 权重}，不给则等权。会自动归一化。
         rf:      年化无风险利率，用于夏普。
+
+    不留副作用：本函数不会永久修改传入的策略对象。`capital` 覆盖 `initial_capital`
+    只在函数执行期间生效，返回前会恢复成调用前的值。这样才能安全地对同一批策略
+    实例反复调用 `run_portfolio(sleeves, capital=X)` 尝试不同的总资金，而不会因为
+    上一次调用的覆盖值残留而污染下一次结果。
     """
     items = _as_items(sleeves)
     if not items:
         raise ValueError("sleeves 为空，至少需要一个子仓")
 
     names = [n for n, _ in items]
+    if len(set(names)) != len(names):
+        dups = sorted({n for n in names if names.count(n) > 1})
+        raise ValueError(f"子仓名称重复: {dups}，每个子仓需要唯一的名称/标的")
+
     if weights is None:
         w = {n: 1.0 / len(items) for n in names}
     else:
@@ -71,54 +81,61 @@ def run_portfolio(sleeves, capital: float = None, weights=None,
             raise ValueError("权重之和必须为正")
         w = {n: weights[n] / total_w for n in names}
 
+    original_capital = {name: strat.initial_capital for name, strat in items}
     if capital is not None:
         for name, strat in items:
             strat.initial_capital = float(capital) * w[name]
     total_capital = float(sum(s.initial_capital for _, s in items))
 
-    # 逐子仓回测
-    results = {}
-    for name, strat in items:
-        results[name] = engine.run(name, start, end, strat, rf=rf)
+    try:
+        # 逐子仓回测
+        results = {}
+        for name, strat in items:
+            results[name] = engine.run(name, start, end, strat, rf=rf)
 
-    # 组合日历 = 所有子仓日期的并集
-    index = None
-    for r in results.values():
-        idx = r["equity_curve"].index
-        index = idx if index is None else index.union(idx)
-    index = index.sort_values()
+        # 组合日历 = 所有子仓日期的并集
+        index = None
+        for r in results.values():
+            idx = r["equity_curve"].index
+            index = idx if index is None else index.union(idx)
+        index = index.sort_values()
 
-    equity = pd.Series(0.0, index=index)
-    bench = pd.Series(0.0, index=index)
-    for name, strat in items:
-        r = results[name]
-        cap = float(strat.initial_capital)
-        equity += _align(r["equity_curve"], index, cap)
-        bench += _align(r["benchmark_curve"], index, cap)
-    equity.name, bench.name = "equity", "benchmark"
+        equity = pd.Series(0.0, index=index)
+        bench = pd.Series(0.0, index=index)
+        for name, strat in items:
+            r = results[name]
+            cap = float(strat.initial_capital)
+            equity += _align(r["equity_curve"], index, cap)
+            bench += _align(r["benchmark_curve"], index, cap)
+        equity.name, bench.name = "equity", "benchmark"
 
-    # 合并流水，加上 sleeve 列
-    frames = []
-    for name in names:
-        t = results[name]["trades"]
-        if not t.empty:
-            frames.append(t.assign(sleeve=name))
-    trades = (pd.concat(frames, ignore_index=True).sort_values("entry_dt")
-              .reset_index(drop=True)) if frames else pd.DataFrame()
+        # 合并流水，加上 sleeve 列
+        frames = []
+        for name in names:
+            t = results[name]["trades"]
+            if not t.empty:
+                frames.append(t.assign(sleeve=name))
+        trades = (pd.concat(frames, ignore_index=True).sort_values("entry_dt")
+                  .reset_index(drop=True)) if frames else pd.DataFrame()
 
-    # 子仓明细
-    rows = []
-    for name, strat in items:
-        r = results[name]
-        rows.append({
-            "sleeve": name, "capital": float(strat.initial_capital), "weight": w[name],
-            "total_return": r["total_return"], "annual_return": r["annual_return"],
-            "sharpe": r["sharpe"], "max_drawdown": r["max_drawdown"],
-            "n_trades": r["n_trades"], "win_rate": r["win_rate"],
-            "n_margin_calls": r["n_margin_calls"], "n_rejected": r["n_rejected"],
-            "bust": r["bust"],
-        })
-    sleeve_table = pd.DataFrame(rows)[_SLEEVE_COLUMNS]
+        # 子仓明细（用完 strat.initial_capital 的最后一处，之后就可以恢复原值了）
+        rows = []
+        for name, strat in items:
+            r = results[name]
+            rows.append({
+                "sleeve": name, "capital": float(strat.initial_capital), "weight": w[name],
+                "total_return": r["total_return"], "annual_return": r["annual_return"],
+                "sharpe": r["sharpe"], "max_drawdown": r["max_drawdown"],
+                "n_trades": r["n_trades"], "win_rate": r["win_rate"],
+                "n_margin_calls": r["n_margin_calls"], "n_rejected": r["n_rejected"],
+                "bust": r["bust"],
+            })
+        sleeve_table = pd.DataFrame(rows)[_SLEEVE_COLUMNS]
+    finally:
+        # 不管成功还是中途报错，都把 initial_capital 恢复成调用前的值——
+        # 这个函数只是"借用"策略对象跑一遍，不应该在调用者手里留下痕迹。
+        for name, strat in items:
+            strat.initial_capital = original_capital[name]
 
     strat_m = _curve_metrics(equity, rf)
     bench_m = _curve_metrics(bench, rf)

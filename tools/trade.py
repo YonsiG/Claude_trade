@@ -25,6 +25,16 @@ Fee model (applied in buy/sell/short/cover, propagates to all higher-level funct
     杠杆收益率也自动正确，无需额外记账。
 
     杠杆开仓后必须配合 `margin_call()` 检查，否则回测会让爆仓的持仓活下去。
+
+`take_profit` / `stop_loss` / `trailing_take_profit` / `capital_stop_loss` ——
+简化版离场原语，仅供**自己撸主循环**的新策略使用：
+    - 只认一个 `current_price`，没有盘中 high/low 触发、没有跳空按开盘价成交的处理，
+      会系统性低估回撤（价格盘中扎穿止损位又收回的情况完全捕捉不到）。
+    - `strategies/single_signal.py` **不用这几个函数**——它在 `_exit_fill()` 里
+      自己实现了一套支持盘中触发 + 跳空成交价的更完整逻辑。那才是本项目的
+      生产版本，写新策略想要同等质量的止损处理，照抄/复用那一份，不要从这里找。
+    - 保留这几个函数是因为接口足够简单，写一个"只看收盘价"的快速原型时够用；
+      真要认真回测就不能只看收盘价。
 """
 from __future__ import annotations
 
@@ -185,6 +195,8 @@ def take_profit(state: dict, current_price: float, tp_price: float,
     Long : triggers when current_price >= tp_price.
     Short: triggers when current_price <= tp_price.
     Returns True if triggered.
+
+    简化版：只看单一 current_price，没有盘中触发/跳空处理，见模块 docstring。
     """
     if state["shares"] == 0:
         return False
@@ -207,6 +219,8 @@ def stop_loss(state: dict, current_price: float, sl_price: float,
     Long : triggers when current_price <= sl_price.
     Short: triggers when current_price >= sl_price.
     Returns True if triggered.
+
+    简化版：只看单一 current_price，没有盘中触发/跳空处理，见模块 docstring。
     """
     if state["shares"] == 0:
         return False
@@ -237,6 +251,8 @@ def trailing_take_profit(state: dict, current_price: float, bars_held: int,
 
     Clears state['_trail_peak'] on trigger or when window expires.
     Returns True if triggered.
+
+    简化版：只看单一 current_price，没有盘中触发/跳空处理，见模块 docstring。
     """
     if state["shares"] == 0:
         state.pop("_trail_peak", None)
@@ -274,6 +290,8 @@ def capital_stop_loss(state: dict, current_price: float, entry_price: float, y: 
 
     y=0.05 means stop out when this trade has lost more than 5% of entry capital.
     Delegates to stop_loss once the threshold price is computed.
+
+    简化版：只看单一 current_price，没有盘中触发/跳空处理，见模块 docstring。
     """
     if state["shares"] > 0:
         sl_price = entry_price * (1 - y)

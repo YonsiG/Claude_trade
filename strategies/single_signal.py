@@ -268,9 +268,12 @@ class SingleSignalStrategy(BaseStrategy):
         self.rejected = []
 
         sig = self.signal_fn(self.df)
-        entry_sig, size_sig = sig.entry, sig.size
-        if hasattr(sig, "validate"):
-            entry_sig, size_sig = sig.validate(self.df.index)
+        # 无条件校验：signal_fn 必须返回 Signal（或带 .validate 的兼容对象）。
+        # 之前这里有个 hasattr 分支想兼容"没有 validate 的信号"，但根本走不到——
+        # 没有 .entry/.size 的对象在上一步就已经 AttributeError 了，这个分支是死代码，
+        # 而且一旦真的命中（自定义了带 .entry/.size 却没有 .validate 的对象），
+        # 会悄悄跳过校验，让非法 entry 值（比如 0.3）被 int() 截断成 0 而不是报错。
+        entry_sig, size_sig = sig.validate(self.df.index)
 
         state = {"cash": self.initial_capital, "shares": 0.0}
         direction = 0           # 当前持仓方向 -1 / 0 / +1
