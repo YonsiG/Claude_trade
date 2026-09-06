@@ -146,6 +146,25 @@ def test_margin_sizing_increases_lots_and_leverage():
     assert notional / 100_000 == pytest.approx(4.8)
 
 
+def test_ratio_round_trip_does_not_lose_an_affordable_lot_to_float_noise():
+    """
+    回归用例：策略层先算出"能买几手"再反推 ratio=qty*cost_per_lot/free，
+    short()/buy() 内部又要把 ratio 乘回 free 换算回预算再重新 floor 一次
+    手数——这一去一回的浮点乘除不保证严格可逆，真实恰好等于整数手数的
+    位置可能算出 0.999999999999，直接 floor 会凭空丢掉本该买得起的最后
+    一手。这里用一组实盘回测里真实触发过这个问题的数值（AG0 期货，
+    multiplier=15, margin_rate=0.3）复现：ratio 是按买得起 1 手反推出来的，
+    short() 应该真的开出这 1 手，不能因为浮点噪声变成 0 手静默放弃。
+    """
+    st = new_state(cash=107456.59307686519)
+    price = 7220.376002211777
+    multiplier, margin_rate = 15.0, 0.3
+    margin_per_lot = price * multiplier * margin_rate
+    ratio = min(1.0, (1 * margin_per_lot) / st["cash"])   # 反推：买 1 手对应的 ratio
+    short(st, price, futures=True, multiplier=multiplier, margin_rate=margin_rate, ratio=ratio)
+    assert st["shares"] == -1, "ratio 明明是按买得起 1 手反推出来的，不该因为浮点误差变成 0 手"
+
+
 def test_equity_is_self_consistent_right_after_leveraged_entry():
     st = new_state()
     buy(st, 3000, futures=True, multiplier=10, margin_rate=0.20)

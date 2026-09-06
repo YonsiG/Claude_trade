@@ -9,6 +9,15 @@
 期货（自动查合约乘数与保证金率）：
   python run_example.py --ticker RB0 --source ak --futures
 
+平台突破（价格位止损 + 按验证次数分级的风险仓位，详见 strategies/platform_breakout.py）：
+  python run_example.py --strategy platform_breakout --ticker AAPL --start 2018-01-01
+
+关键区突破（platform_breakout 的对照组：正向状态机 + 独立验证 + 次日开盘执行
+带可接受区间，详见 strategies/key_zone_breakout.py）：
+  python run_example.py --strategy key_zone_breakout --ticker AAPL --start 2018-01-01
+  python run_example.py --strategy key_zone_breakout --kz-variant baseline --kz-touches 2 \\
+                        --ticker RB0 --source ak --futures
+
 组合（资金等权切分到多个标的，各自独立执行）：
   python run_example.py --tickers AAPL,NVDA,TSLA --capital 300000
   python run_example.py --tickers RB0,M0,AU0 --source ak --futures --capital 600000
@@ -26,23 +35,61 @@ from data.loader import load
 from signals.pattern import engulfing
 from signals.pattern import umbrella
 from strategies.single_signal import SingleSignalStrategy
+from strategies.platform_breakout import PlatformBreakoutStrategy
+from strategies.key_zone_breakout import KeyZoneBreakoutStrategy
 from backtest import engine
 from backtest import portfolio as pf
 from backtest import split as sp
 
 
 # ── 策略注册表 ──────────────────────────────────────────────────────────────
+# SingleSignalStrategy 系：signal_fn(df)->Signal，止损止盈都是固定比例
 _SIGNALS = {
     "single_signal": umbrella,
     "engulfing": engulfing,
     # "breakout":  my_breakout_signal,
 }
+# 参数形状和 SingleSignalStrategy 不一样（价格位止损、按风险定仓位）的策略，
+# 在 build_strategy() 里单独分支，不塞进 _SIGNALS。
+_OTHER_STRATEGIES = ["platform_breakout", "key_zone_breakout"]
+
+# 关键区突破的三个止盈/追踪对照版本，见 strategies/key_zone_breakout.py 类
+# docstring 里的对照表：trail_start_r（追踪止盈激活门槛，以初始风险倍数计）
+# 和 fixed_take_profit（固定止盈上限，None 表示不设上限）。
+_KZ_VARIANTS = {
+    "original": {"trail_start_r": 0.0, "fixed_take_profit": 0.30},   # 原始版
+    "baseline": {"trail_start_r": 2.0, "fixed_take_profit": 0.30},   # 建议基准版
+    "trend":    {"trail_start_r": 2.0, "fixed_take_profit": None},   # 趋势对照版
+}
 
 
 def build_strategy(name, df, capital, args, ticker):
-    """按名称构造策略。新增策略在 _SIGNALS 里注册信号，或在此处分支。"""
+    """按名称构造策略。新增 Signal 型策略在 _SIGNALS 里注册；参数形状不同的
+    （比如按风险定仓位、价格位止损）在这里加一个分支。"""
+    if name == "platform_breakout":
+        return PlatformBreakoutStrategy(
+            df,
+            execution=args.execution,
+            futures=args.futures,
+            ticker=ticker if args.futures else None,
+            fee_rate=args.fee,
+            initial_capital=capital,
+        )
+    if name == "key_zone_breakout":
+        from functools import partial
+        from signals.key_zone import key_zone_breakout
+        variant = _KZ_VARIANTS[args.kz_variant]
+        return KeyZoneBreakoutStrategy(
+            df,
+            signal_fn=partial(key_zone_breakout, required_touches=args.kz_touches),
+            futures=args.futures,
+            ticker=ticker if args.futures else None,
+            fee_rate=args.fee,
+            initial_capital=capital,
+            **variant,
+        )
     if name not in _SIGNALS:
-        raise ValueError(f"未知策略: {name!r}，可选: {list(_SIGNALS)}")
+        raise ValueError(f"未知策略: {name!r}，可选: {list(_SIGNALS) + _OTHER_STRATEGIES}")
     return SingleSignalStrategy(
         df,
         signal_fn=_SIGNALS[name],
@@ -68,7 +115,7 @@ def parse_args():
     p.add_argument("--source",   default="yf",            choices=["yf", "ak"],
                    help="数据源 (默认: yf)")
     p.add_argument("--strategy", default="single_signal",
-                   help=f"策略名称，可选: {list(_SIGNALS)}")
+                   help=f"策略名称，可选: {list(_SIGNALS) + _OTHER_STRATEGIES}")
     p.add_argument("--capital",  default=100_000,         type=float,
                    help="初始资金 (组合模式下为总资金)")
     p.add_argument("--futures",  action="store_true",
@@ -77,7 +124,12 @@ def parse_args():
     p.add_argument("--stop",     default=0.10, type=float, help="固定止损比例")
     p.add_argument("--fee",      default=0.0,  type=float, help="手续费率")
     p.add_argument("--execution", default="close", choices=["close", "next_open"],
-                   help="信号成交时点 (默认: close)")
+                   help="信号成交时点 (默认: close，key_zone_breakout 固定次日开盘不受此影响)")
+    p.add_argument("--kz-variant", default="baseline",
+                   choices=list(_KZ_VARIANTS),
+                   help="key_zone_breakout 的止盈/追踪版本 (默认: baseline，见类 docstring)")
+    p.add_argument("--kz-touches", default=3, type=int,
+                   help="key_zone_breakout 的最低验证次数门槛 (默认: 3)")
     p.add_argument("--rf",       default=0.0,  type=float,
                    help="年化无风险利率，用于夏普 (0.04 = 4%%)")
 

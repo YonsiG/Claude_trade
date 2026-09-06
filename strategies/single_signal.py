@@ -4,7 +4,7 @@ from typing import Optional
 
 import pandas as pd
 
-from .base import BaseStrategy
+from .base import BaseStrategy, resolve_futures_contract
 from tools.trade import (buy, sell, short, cover, free_capital,
                          margin_call, force_close)
 
@@ -79,7 +79,7 @@ class SingleSignalStrategy(BaseStrategy):
         if missing:
             raise ValueError(f"行情数据缺少列 {missing}，需要 {list(_REQUIRED_COLS)}")
 
-        multiplier, margin_rate = self._resolve_contract(
+        multiplier, margin_rate = resolve_futures_contract(
             futures, ticker, multiplier, margin_rate)
         self.ticker = ticker
         self.margin_rate = margin_rate
@@ -103,35 +103,6 @@ class SingleSignalStrategy(BaseStrategy):
         self.fee_per_lot = fee_per_lot
         self.size_by_strength = size_by_strength
         self.bust = None
-
-    # ── 合约规格 ────────────────────────────────────────────────────────────
-    @staticmethod
-    def _resolve_contract(futures, ticker, multiplier, margin_rate):
-        """
-        确定合约乘数与保证金率。
-
-        **每个期货品种一手对应的乘数都不同**（AU=1000克、AG=15千克、RB=10吨、
-        LH=16吨、CU=5吨），保证金率也不同。所以 futures=True 时不允许沉默地
-        用 1.0——要么给 ticker 让它查 data/futures_spec.csv，要么两个都显式传。
-        """
-        if not futures:
-            return (1.0 if multiplier is None else multiplier), 1.0
-
-        if multiplier is not None and margin_rate is not None:
-            return multiplier, margin_rate
-
-        if ticker is None:
-            raise ValueError(
-                "futures=True 时必须确定合约规格：传 ticker（如 ticker='RB0'，"
-                "自动查 data/futures_spec.csv），或同时显式传 multiplier 和 "
-                "margin_rate。不同品种一手的乘数差异极大（AU=1000, AG=15, "
-                "RB=10, CU=5），沉默地用 1.0 会让每个品种都算错。"
-            )
-
-        from data.futures_spec import spec          # 延迟导入，股票回测无需此表
-        s = spec(ticker)                            # 查不到会抛 KeyError 并说明原因
-        return (s.multiplier if multiplier is None else multiplier,
-                s.margin_rate if margin_rate is None else margin_rate)
 
     # ── 内部工具 ────────────────────────────────────────────────────────────
     @property

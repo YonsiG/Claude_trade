@@ -49,12 +49,22 @@ def _fee(quantity: float, price: float, fee_rate: float, fee_per_lot: float,
 
 def _lots_for_budget(budget: float, price: float, multiplier: float,
                      margin_rate: float, fee_rate: float, fee_per_lot: float) -> int:
-    """保证金约束下 `budget` 能开的整数手数。"""
+    """
+    保证金约束下 `budget` 能开的整数手数。
+
+    调用方（策略层的 `_position_ratio`）往往是先按"能买几手"反推出一个
+    `ratio = qty*cost_per_lot/free`，这里再用 `budget = free*ratio` 反过来
+    换算回 `budget/cost_per_lot`——这一去一回的浮点乘除不保证严格可逆，
+    真实应该恰好等于整数手数的位置可能算出 0.999999999999 这种只差
+    一点点的值，直接 floor 会凭空丢掉本该买得起的最后一手。加一个相对
+    浮点精度量级的容差（1e-9），只用来吸收这种舍入噪声，不会让真正
+    不够一手的情况被误判为够。
+    """
     notional = price * multiplier
     cost_per_lot = notional * margin_rate + notional * fee_rate + fee_per_lot
     if cost_per_lot <= 0:
         return 0
-    return math.floor(budget / cost_per_lot)
+    return math.floor(budget / cost_per_lot + 1e-9)
 
 
 def free_capital(state: dict, price: float, futures: bool = False,

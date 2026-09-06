@@ -200,6 +200,86 @@ strategy = SingleSignalStrategy(
 先建的底仓不该因为后加的仓位而被按原价止损。流水里 `n_adds` 记录加仓次数，
 一次往返仍是一条记录。
 
+### `PlatformBreakoutStrategy`
+
+平台突破：止损是**价格位**（平台反向突破价），仓位大小由**风险**反推，
+不是固定资金比例——这两点和 `SingleSignalStrategy` 的假设不一样，所以是
+单独一个策略类，消费 `signals.platform.platform_breakout` 产出的
+`PlatformSignal`，不是通用的 `Signal`：
+
+```python
+from strategies.platform_breakout import PlatformBreakoutStrategy
+
+strategy = PlatformBreakoutStrategy(
+    df,
+    risk_per_validation=0.01,      # 每次平台验证对应 1% 账户风险
+    max_risk=0.04,                 # 风险敞口上限，validations 再多也不超过
+    profit_trail_start=0.10,       # 浮盈超过 10% 才开始追踪止盈
+    profit_trail_giveback=0.30,    # 回吐峰值利润 30% 就止盈
+    fixed_take_profit=0.30,        # 无条件固定止盈目标
+    futures=True, ticker="RB0",    # 期货同样自动查合约乘数/保证金率
+    initial_capital=100_000,
+)
+```
+
+仓位公式（详见类 docstring 的推导）：**风险预算和保证金是两回事，不能
+互相替代**。风险预算 = 触发止损时实际亏掉的钱 = `qty × stop_distance ×
+multiplier`，跟保证金无关——期货止损亏的是价格差，不是保证金本身（保证金率
+通常远大于止损幅度占价格的比例，所以即使触发止损也不会亏光保证金）。
+期货手数因此分两步定：`qty_risk = risk_amount/(stop_distance×multiplier)`
+是风险预算允许的手数，`qty_margin = free_capital/(price×multiplier×margin_rate)`
+是保证金能扛住的上限；`qty_risk` 折算不到 1 手不代表开不起仓，只要保证金
+够就按 1 手起步，风险预算允许更多手数时再往上加，最终不超过 `qty_margin`。
+股票没有整手概念，份额连续，维持纯风险公式即可。
+
+离场是三条规则的组合，哪个先触发按哪个走（同一根 bar 内都触发时，保守起见
+亏损侧优先）：价格跌回平台 + 反向突破幅度（止损）、浮盈回吐追踪、固定止盈。
+和 `SingleSignalStrategy` 一样支持盘中触发 + 跳空按开盘价成交、
+`exit_on_reverse` 反手、期货保证金强平。
+
+`PlatformSignal.entry` 的语义**和 `Signal` 不同**：是"条件持续成立"而不是
+"事件脉冲"，只要收盘价还在突破阈值外就会连续多根 bar 保持非 0——策略"只在
+空仓时响应"天然去重，好处是即使某天没能成交，后续 bar 只要突破仍然有效
+依然能补上。详见 `signals/platform.py` 模块 docstring。
+
+### `KeyZoneBreakoutStrategy`
+
+`PlatformBreakoutStrategy` 的对照组，消费 `signals.key_zone.key_zone_breakout`
+产出的 `KeyZoneSignal`。仓位公式、强平、爆仓完全复用父类（继承
+`PlatformBreakoutStrategy`），但入场执行机制和止盈追踪的判定基准完全不同：
+
+```python
+from strategies.key_zone_breakout import KeyZoneBreakoutStrategy
+
+strategy = KeyZoneBreakoutStrategy(
+    df,
+    risk_per_touch=0.01,           # 每次关键区触碰对应 1% 账户风险
+    max_risk=0.04,
+    trail_start_r=2.0,             # 追踪止盈激活门槛：2 倍初始风险(R)
+    profit_trail_giveback=0.30,
+    fixed_take_profit=0.30,        # None 表示不设固定止盈上限
+    futures=True, ticker="RB0",
+    initial_capital=100_000,
+)
+```
+
+三处关键差异：
+
+1. **`entry` 是一次性事件脉冲**（和 `PlatformSignal` 的"条件持续成立"相反）
+   ——每个关键区一辈子只有一次突破机会，不需要"只在空仓时响应"去重。
+2. **执行永远在信号次日开盘，且带可接受区间**：多头要求开盘价落在信号自带的
+   `(exec_lo, exec_hi]`，空头落在 `[exec_lo, exec_hi)`，否则直接放弃这笔
+   交易——不递延、不追价，没有第二次机会。
+3. **止盈追踪的激活门槛按 R 倍数算**（`d = |entry - stop|` 为初始风险单位），
+   不是开仓价的固定百分比：`trail_start_r=0` 时任何正盈利就开始追踪（"原始
+   版"），`=2.0` 时要浮盈达到 2 倍初始风险才开始追踪（"建议基准版"/
+   "趋势对照版"，后者 `fixed_take_profit=None` 不设固定止盈上限）。
+
+股票不能裸卖空：`futures=False` 时做空信号只用来给已有多头平仓离场，空仓时
+收到做空信号直接忽略；`futures=True` 时多空都正常开仓/反手。详见
+`signals/key_zone.py` 模块 docstring（8 条算法规则）和
+`strategies/key_zone_breakout.py` 类 docstring。
+
 ---
 
 ## 回测模块（`backtest/`）
