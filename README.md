@@ -15,6 +15,7 @@ claude_trade_expert/
 ├── strategies/     # 策略逻辑（组合信号）
 ├── backtest/       # 回测引擎、组合层、绩效指标、图表
 ├── tests/          # 回归测试（pytest）
+├── script/         # 一次性/报表类脚本（不是可复用库代码）
 └── run_example.py  # 端到端示例
 ```
 
@@ -279,6 +280,14 @@ strategy = KeyZoneBreakoutStrategy(
 收到做空信号直接忽略；`futures=True` 时多空都正常开仓/反手。详见
 `signals/key_zone.py` 模块 docstring（8 条算法规则）和
 `strategies/key_zone_breakout.py` 类 docstring。
+
+多标的/多参数对照结果可以用 `script/build_kz_dashboard.py` 生成一份自包含的
+HTML 回测台（资金曲线、标的价格与成交量、逐笔交易，点哪组配置看哪组）：
+
+```bash
+python script/build_kz_dashboard.py                         # 默认 6 个标的
+python script/build_kz_dashboard.py --tickers AAPL,RB0 --touches 2,3 --out my.html
+```
 
 ---
 

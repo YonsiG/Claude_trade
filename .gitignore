@@ -4,6 +4,7 @@ data/raw/**/*.csv
 # 回测产物
 backtest/results/*.csv
 backtest/plots/*.png
+backtest/plots/*.html
 
 __pycache__/
 *.pyc
